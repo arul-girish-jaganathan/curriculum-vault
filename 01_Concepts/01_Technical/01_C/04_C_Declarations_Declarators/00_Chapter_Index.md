@@ -1,7 +1,7 @@
-# Declarations and Declarators
+# C Declarations and Declarators
 
 ## Chapter purpose
-A deep-reference chapter in the C language knowledge base. Use it to understand the rule, reason about compiler and ABI effects, and apply it safely in embedded firmware.
+Build mechanical skill in reading and designing C declarations. A declaration is not merely type information: declaration specifiers and the declarator together describe the declared entity, and small syntactic changes can alter pointer, array, function, storage, and API semantics.
 
 ## Topics
 - [[01_Declaration_specifiers|Declaration specifiers]]
@@ -18,7 +18,7 @@ A deep-reference chapter in the C language knowledge base. Use it to understand 
 - [[12_Header_declaration_hygiene|Header declaration hygiene]]
 
 ## Review prompts
-- What is guaranteed by ISO C?
-- What depends on the implementation, ABI, compiler, libc, or target?
-- What failure mode would appear on an embedded system?
-- What test or inspection would prove the behavior?
+- What entity does the declarator actually declare?
+- Which parts describe the type and which parts select storage/linkage behavior?
+- How do parentheses change binding between pointer, array, and function declarators?
+- What ABI consequences follow from a declaration crossing a module boundary?
