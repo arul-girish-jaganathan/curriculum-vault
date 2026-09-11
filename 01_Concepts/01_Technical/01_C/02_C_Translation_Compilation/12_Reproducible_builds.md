@@ -1,44 +1,32 @@
-# Reproducible builds
+# Reproducible Builds
 
-> Canonical C topic note — chapter 02.
+A reproducible build is one where the same controlled inputs produce the same intended artifact, subject to the reproducibility guarantees of the toolchain and environment. For firmware, reproducibility supports debugging, release integrity, supply-chain confidence and field-forensics.
 
-## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Reproducible builds**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+## Inputs that matter
+Record source revision, compiler and binutils versions, target triple, language mode, compiler flags, linker script, libraries/sysroot, generated sources, build tools and relevant environment variables. Timestamps, paths and nondeterministic metadata may also affect artifacts.
 
-## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+## Why byte identity is useful
+Bit-for-bit identity makes artifact comparison simple, but reproducibility can also be defined at a weaker semantic level when toolchains insert unavoidable metadata. The chosen definition should be explicit.
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+## Embedded workflow
+A release should retain the exact image, map file, symbol information and build manifest. If a field device crashes months later, engineers should be able to reconstruct the code and configuration that produced its firmware.
 
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+## Security and safety
+Reproducibility improves supply-chain review because unexpected artifact differences become visible. It also supports safety evidence by making the relationship between reviewed source and released binary easier to demonstrate.
 
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+## Common failures
+- unpinned toolchain versions;
+- build timestamps embedded in binaries;
+- host-dependent generated files;
+- uncontrolled environment variables;
+- different linker scripts or startup objects;
+- downloaded dependencies that changed without version pinning.
 
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
-```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
-```
-
-## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
-
-## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+## Staff-level view
+Reproducibility is an organizational capability, not just a compiler flag. Define the artifact identity contract, preserve build inputs, and continuously verify representative releases.
 
 ## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+- [[08_Compiler_driver_stages]]
+- [[09_Linking_overview]]
+- [[11_LTO_and_whole_program_optimization]]
+- [[38_C_Build_Toolchain]]
