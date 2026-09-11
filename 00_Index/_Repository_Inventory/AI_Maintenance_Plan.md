@@ -9,7 +9,10 @@ This repository is maintained as a long-term Obsidian knowledge base. Repository
 - Repository: `arul-girish-jaganathan/curriculum-vault`
 - Default branch: `master`
 - Current maintenance branch: `work/ai-maintenance-2026-09`
-- Copilot credits are currently exhausted; repository maintenance is being continued with direct GitHub repository tooling until Copilot usage resets.
+- GitHub currently reports repository size at approximately 25 MB; this is repository metadata size, not a count of Markdown files.
+- Copilot credits are exhausted; maintenance is therefore being continued with direct GitHub repository tooling where possible.
+- The maintenance branch is 12 commits ahead of `master` and has not been merged.
+- The repository has not been declared globally complete or fully audited.
 
 ## Workflow
 
@@ -37,18 +40,19 @@ This repository is maintained as a long-term Obsidian knowledge base. Repository
 - Keep indexes synchronized with the actual filesystem.
 - Do not use obsolete curriculum plans as the authoritative domain list.
 
-## Important caveats in existing automation
+## Validation caveats
 
-The original analyzer is useful but must not be treated as a perfect validator. In particular:
+The repository contains maintenance scripts intended to support repository-wide checks, but their results must be treated according to what they actually implement. In particular:
 
-- The orphan detector is based on incoming wikilinks and can flag legitimate entry points.
-- Duplicate detection is primarily normalized filename matching, not semantic equivalence.
-- Wikilink validation currently reduces targets to note stems, which can create false positives/negatives for path-sensitive links and aliases.
-- The current shell runner clones the repository into `/tmp` and therefore should not be treated as a canonical local CI mechanism until replaced or made deterministic.
-- Repository status must be generated from the actual branch being audited.
-
-These limitations must be repaired before relying on the reports for completion claims.
+- Orphan detection based on incoming wikilinks can flag legitimate entry points.
+- Filename/stem duplicate detection does not prove semantic duplication.
+- Wikilink validation must account for note stems, relative paths, headings, aliases, and Obsidian resolution semantics.
+- A validator that merely prints findings is not equivalent to a passing quality gate.
+- A report is not evidence of complete execution unless it was actually run against the repository revision being audited.
+- GitHub API inspection may be unable to execute repository-local scripts; GitHub Actions is the canonical execution path when enabled.
 
 ## Domain completion standard
 
-A domain can only be marked complete when its substantive canonical topics have been reviewed and developed to an appropriate depth, cross-links are validated, indexes are synchronized, obvious placeholders are resolved or explicitly staged, and the resulting evidence is recorded in repository status/change logs.
+A domain can only be marked `VALIDATED` when its substantive canonical topics have been reviewed and developed to an appropriate depth, cross-links are validated, indexes are synchronized, obvious placeholders are resolved or explicitly staged, and the resulting evidence is recorded in repository status/change logs.
+
+A roadmap, file count, or previous agent completion message is not evidence of substantive completion.
