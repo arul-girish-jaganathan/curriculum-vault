@@ -3,7 +3,7 @@ title: "Learning Status"
 type: "index"
 status: "active"
 purpose: "Track actual understanding and maturity across the Staff Embedded curriculum."
-last_updated: "2026-09-05"
+last_updated: "2026-09-11"
 review_cycle: "annual"
 ---
 
@@ -38,40 +38,16 @@ Use these evidence levels:
 
 The strongest evidence is usually **Production + Debug + Design**.
 
-## 3. Domain Status
+## 3. Knowledge-base Processing Status
 
-| # | Domain | Understanding | Evidence | Q100 | Last Reviewed | Confidence | Open Gaps | Next Action |
-|---|---|---:|---|---|---|---|---|---|
-| 01 | Embedded C | 0 | None | 0/100 | — | — | — | — |
-| 02 | Embedded C++ | 0 | None | 0/100 | — | — | — | — |
-| 03 | DSA | 0 | None | 0/100 | — | — | — | — |
-| 04 | Computer Architecture | 0 | None | 0/100 | — | — | — | — |
-| 05 | ARM | 0 | None | 0/100 | — | — | — | — |
-| 06 | Embedded Systems | 0 | None | 0/100 | — | — | — | — |
-| 07 | Memory | 0 | None | 0/100 | — | — | — | — |
-| 08 | OS | 0 | None | 0/100 | — | — | — | — |
-| 09 | RTOS | 0 | None | 0/100 | — | — | — | — |
-| 10 | Linux | 0 | None | 0/100 | — | — | — | — |
-| 11 | Concurrency | 0 | None | 0/100 | — | — | — | — |
-| 12 | Interrupts & Timing | 0 | None | 0/100 | — | — | — | — |
-| 13 | Drivers & BSP | 0 | None | 0/100 | — | — | — | — |
-| 14 | Protocols | 0 | None | 0/100 | — | — | — | — |
-| 15 | Debugging | 0 | None | 0/100 | — | — | — | — |
-| 16 | Performance | 0 | None | 0/100 | — | — | — | — |
-| 17 | Power & Thermal | 0 | None | 0/100 | — | — | — | — |
-| 18 | Security | 0 | None | 0/100 | — | — | — | — |
-| 19 | Safety & Reliability | 0 | None | 0/100 | — | — | — | — |
-| 20 | Testing | 0 | None | 0/100 | — | — | — | — |
-| 21 | System Design | 0 | None | 0/100 | — | — | — | — |
-| 22 | Software Architecture | 0 | None | 0/100 | — | — | — | — |
-| 23 | Design Patterns | 0 | None | 0/100 | — | — | — | — |
-| 24 | Toolchain | 0 | None | 0/100 | — | — | — | — |
-| 25 | HW/SW Integration | 0 | None | 0/100 | — | — | — | — |
-| 26 | Boot & Update | 0 | None | 0/100 | — | — | — | — |
-| 27 | Storage | 0 | None | 0/100 | — | — | — | — |
-| 28 | Networking | 0 | None | 0/100 | — | — | — | — |
-| 29 | DSP | 0 | None | 0/100 | — | — | — | — |
-| 30 | Engineering Leadership | 0 | None | 0/100 | — | — | — | — |
+This table tracks repository content processing, not the user's personal mastery. Personal maturity should be updated from actual learning evidence rather than inferred from note existence.
+
+| Scope | Repository content state | Personal learning state | Evidence |
+|---|---|---|---|
+| Embedded C | AUDIT_REQUIRED | Unassessed | Prior substantive work exists; independent validation still required. |
+| Other technical domains | Unverified | Unassessed | No inference from skeleton/file existence. |
+
+See `00_Index/_Repository_Inventory/DOMAIN_STATUS.md` for the repository-processing ledger.
 
 ## 4. Completion Test
 
@@ -114,3 +90,4 @@ Defend the trade-off
 | Date | Domain | Change | Evidence |
 |---|---|---|---|
 | 2026-09-05 | Curriculum | Initial knowledge-base setup | Structure created |
+| 2026-09-11 | Repository maintenance | Processing and personal learning status separated | Prevent repository automation from falsely implying personal mastery |
