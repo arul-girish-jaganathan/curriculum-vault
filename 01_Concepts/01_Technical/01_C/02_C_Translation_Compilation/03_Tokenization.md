@@ -1,44 +1,24 @@
 # Tokenization
 
-> Canonical C topic note — chapter 02.
+Tokenization turns the character stream produced by earlier translation processing into preprocessing tokens and then the lexical elements needed by the C grammar. Understanding this boundary explains why comments, whitespace, literals, identifiers and preprocessing directives behave differently.
 
-## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Tokenization**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+## Important categories
+C source contains identifiers, keywords, constants, string literals, punctuators and operators, with preprocessing tokens existing at an earlier stage. The compiler's lexer must recognize these according to the active source encoding and language mode.
 
-## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
-
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+## Why whitespace is not always cosmetic
+Whitespace can separate tokens. Without separation, two intended identifiers can become one token. Comments are replaced during translation processing and can therefore affect token boundaries. String literals and character constants have their own lexical rules and escape processing.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+Generated register definitions, protocol constants and macro-heavy hardware headers are particularly sensitive to preprocessing and lexical behavior. Compiler extensions may add keywords, attributes or syntax that is unavailable in another compiler.
 
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+## Diagnostics
+If a compiler reports an apparently nonsensical syntax error far from the actual defect, inspect earlier preprocessing and token boundaries. A missing quote, comment delimiter or macro expansion can shift the parser's view of the remainder of the file.
 
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
-```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
-```
-
-## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
-
-## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+## Staff-level view
+Keep lexical concerns separate from semantic concerns. When debugging a build failure, establish the exact preprocessed source first; then determine whether the failure is lexical, syntactic, semantic, or implementation-specific.
 
 ## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+- [[01_Source_to_translation_unit]]
+- [[02_Preprocessing_phase]]
+- [[04_Parsing_and_semantic_analysis]]
+- [[61_C_Translation_Phases]]
