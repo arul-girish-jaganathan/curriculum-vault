@@ -1,44 +1,22 @@
-# Keywords
+# Keywords and language-reserved words
 
-> Canonical C topic note — chapter 03.
+## Core idea
+Keywords are reserved tokens with predefined grammatical meaning in C. Their presence is recognized during translation; they are not ordinary identifiers available for application naming.
 
-## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Keywords**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+## Why this matters
+A keyword participates in grammar and constraints, not merely in naming. Standard evolution can add or retire keywords, which is why code written for one language version or compiler extension may conflict with another baseline.
 
-## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+## Embedded consequences
+A project-wide language baseline should be explicit. Toolchain flags such as a selected C standard mode affect which features and diagnostics are accepted. Generated code and vendor headers may depend on implementation extensions, so a clean build requires a documented language mode rather than an assumed compiler default.
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+## Traps
+- Treating a compiler extension keyword as portable ISO C.
+- Mixing C and C++ assumptions.
+- Letting headers silently depend on a compiler-specific language mode.
+- Assuming acceptance by one compiler proves standard conformance.
 
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
-
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
-
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
-```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
-```
-
-## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+## Verification
+Compile representative feature tests under every supported compiler and language mode. Record the selected standard in the build system and make CI reject accidental language-mode drift.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
-
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+Language version is an architectural dependency. Make it reproducible at the build boundary instead of allowing individual developers or IDE defaults to choose the effective C dialect.
