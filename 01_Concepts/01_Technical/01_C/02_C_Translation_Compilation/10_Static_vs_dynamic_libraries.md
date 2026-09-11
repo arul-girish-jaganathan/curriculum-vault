@@ -1,44 +1,27 @@
-# Static vs dynamic libraries
+# Static vs Dynamic Libraries
 
-> Canonical C topic note — chapter 02.
+A static library packages object files for selection by the linker. A dynamic library is loaded and linked through a runtime dynamic-linking mechanism. These are build and platform mechanisms, not features defined by ISO C.
 
-## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Static vs dynamic libraries**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+## Static linking
+Static linking copies selected library code and data into the final image. It simplifies deployment for many embedded products and makes the final artifact self-contained, but can increase flash usage and complicate library updates.
 
-## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
-
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+## Dynamic linking
+Dynamic linking reduces duplication and permits shared components on systems that support it, but introduces runtime dependencies, loader behavior, versioning concerns and a larger execution environment. It is common in hosted operating systems and uncommon in small bare-metal firmware.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+Library selection affects code size, initialization, memory use, licensing, security patching and deterministic behavior. A supposedly tiny API can pull in substantial support code if the linker cannot eliminate unused paths.
 
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+## ABI boundary
+Libraries are coupled to an ABI: calling conventions, object layout, symbol conventions, alignment and other implementation details. Changing compiler, architecture or ABI can invalidate binary compatibility even when source APIs look unchanged.
 
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
+## Verification
+Inspect map files and symbols to understand what was pulled into the image. For shared environments, record loader and library versions. For firmware, verify startup and initialization dependencies of any linked runtime component.
 
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
-```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
-```
-
-## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
-
-## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+## Staff-level view
+Library strategy is a product lifecycle decision. Optimize for total maintenance cost—flash/RAM, updateability, security exposure, toolchain compatibility and reproducibility—not merely initial build convenience.
 
 ## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+- [[09_Linking_overview]]
+- [[11_LTO_and_whole_program_optimization]]
+- [[36_C_Linkage_ABI]]
+- [[38_C_Build_Toolchain]]
