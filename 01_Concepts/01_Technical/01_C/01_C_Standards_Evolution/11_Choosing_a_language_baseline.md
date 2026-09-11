@@ -1,44 +1,33 @@
-# Choosing a language baseline
+# Choosing a Language Baseline
 
-> Canonical C topic note — chapter 01.
+A language baseline is the explicit set of C rules and implementation features a product supports. It should be chosen as an engineering constraint, not as a slogan such as “modern C”.
 
-## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Choosing a language baseline**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+## Decision inputs
+Consider:
+- required C standard revision;
+- compiler and linker support;
+- target MCU/CPU and ABI;
+- freestanding or hosted environment;
+- standard-library availability;
+- static-analysis and coding-standard support;
+- safety/certification constraints;
+- binary compatibility and bootloader interfaces;
+- team familiarity and maintenance horizon.
 
-## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+## Feature policy
+A strong baseline can permit a standard revision while restricting individual features for good reasons. For example, a project may permit designated initializers but restrict VLAs because stack bounds must be statically demonstrated. The restriction should be recorded as policy, not rediscovered during code review.
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+## Migration
+When upgrading a baseline, measure source diagnostics, generated image size, RAM, timing, startup behavior and ABI compatibility. Compile old and new configurations where practical and use regression tests to establish behavioral equivalence.
 
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+## Embedded-specific rule
+Never use a language baseline to hide hardware dependencies. `volatile`, memory barriers, packed layouts, compiler attributes and inline assembly may be necessary, but each crosses from ISO C into implementation or hardware contracts and should be documented accordingly.
 
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
-
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
-```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
-```
-
-## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
-
-## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+## Staff-level view
+The best baseline is the smallest stable contract that supports product needs while maximizing analyzability and maintainability. Record both the positive feature set and the explicitly prohibited or target-specific subset.
 
 ## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+- [[05_C23_modernization]]
+- [[06_Feature_test_macros]]
+- [[07_Hosted_vs_freestanding]]
+- [[12_Standards_watch]]
