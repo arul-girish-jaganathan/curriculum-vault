@@ -1,44 +1,22 @@
-# Escape sequences
+# Escape sequences and source/execution character mapping
 
-> Canonical C topic note — chapter 03.
+## Core idea
+Escape sequences let source text denote characters and values that are awkward or impossible to write directly. They are interpreted as part of translation; their meaning is distinct from runtime string parsing.
 
-## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Escape sequences**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+## Important distinctions
+Simple escapes such as `\n` denote members of the execution character set with specified semantics; octal and hexadecimal escapes denote character values and can have surprising boundary behavior because the consumed digits are determined lexically. An escape sequence inside a string is part of the literal's contents, not a two-character runtime sequence.
 
-## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+## Embedded consequences
+Escape mistakes can corrupt protocol frames, terminal output, logging, test vectors, or register initialization tables. Hex escapes deserve special care when a following hexadecimal digit can become part of the same escape; split literals or explicit byte arrays when the boundary must be unambiguous.
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+## Failure modes
+- Confusing `"\\n"` with `"\n"`.
+- Accidentally consuming more hex digits than intended.
+- Treating source encoding as the same thing as wire encoding.
+- Assuming terminal or host display behavior proves byte values.
 
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
-
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
-
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
-```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
-```
-
-## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+## Verification
+Dump raw bytes in tests, not only rendered text. For protocol data, compare explicit byte sequences and document the required encoding.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
-
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+Escape syntax is a translation rule, not a serialization specification. Make byte-level contracts explicit at external interfaces.
