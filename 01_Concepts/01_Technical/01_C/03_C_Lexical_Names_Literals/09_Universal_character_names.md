@@ -1,44 +1,21 @@
 # Universal character names
 
-> Canonical C topic note — chapter 03.
+## Core idea
+Universal character names (UCNs) provide a portable source-level notation for characters that may not be directly available in the source character set. Their use is constrained by C's identifier, character, and string-literal rules; valid source notation does not imply identical external encoding.
 
-## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Universal character names**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+## Portability boundary
+Separate source representation from execution character set and from any UTF encoding used by a protocol. A compiler may accept a UCN while the generated execution representation depends on the implementation.
 
-## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+## Embedded consequences
+UCNs can improve source portability for selected character data, but they are a poor substitute for an explicitly specified wire encoding. Cross-toolchain builds must test both acceptance and resulting runtime bytes where text crosses a hardware or communication boundary.
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+## Failure modes
+- Assuming UCN spelling means UTF-8 bytes at runtime.
+- Using UCNs in contexts with additional lexical restrictions.
+- Mixing source portability with protocol portability.
 
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
-
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
-
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
-```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
-```
-
-## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+## Verification
+Compile the same source with supported toolchains and inspect literal bytes when the target encoding matters. Add protocol-level tests against known byte sequences.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
-
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+Text has at least three contracts: source syntax, execution representation, and external encoding. Keep them separate in design and documentation.
