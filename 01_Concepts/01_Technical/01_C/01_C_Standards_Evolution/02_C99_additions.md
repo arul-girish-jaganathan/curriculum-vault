@@ -1,44 +1,47 @@
-# C99 additions
+# C99 Additions
 
-> Canonical C topic note — chapter 01.
+C99 changed everyday C programming substantially while retaining the core C model. For embedded engineers, the important question is not simply “what syntax was added?” but which features improve correctness, analyzability, expressiveness, and numerical code without introducing an unacceptable toolchain or certification burden.
 
-## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **C99 additions**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+## Major additions
+C99 introduced mixed declarations and code, `//` comments, variable-length arrays (VLAs), designated initializers, compound literals, `inline`, `restrict`, `_Bool` and `<stdbool.h>`, `long long`, hexadecimal floating constants, and a substantially expanded library and preprocessing model. It also strengthened the language's support for integer types and floating-point programming.
 
-## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+### Designated initializers
+Designators let initialization name an array element or structure member explicitly:
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
-
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
-
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
-
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
+struct Config c = {
+    .timeout_ms = 100,
+    .enabled = 1,
+};
 ```
 
-## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+This reduces positional coupling when structures evolve. In embedded configuration tables, that can improve reviewability and reduce accidental field shifts. The trade-off is toolchain/coding-standard compatibility in older environments.
 
-## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+### `restrict`
+`restrict` is a promise about how an object is accessed through pointer expressions during an execution. It can enable optimization because the implementation may assume the required non-aliasing relationship. It is not a general “make pointer faster” keyword. A false promise can create undefined behavior and optimization-dependent failures.
+
+### VLAs
+A VLA has a runtime-determined bound and automatic storage duration. It can be useful for bounded algorithms, but embedded systems must account for worst-case stack consumption. Some projects prohibit VLAs because stack depth is harder to prove and because compiler support or safety rules may restrict them.
+
+## Embedded engineering implications
+C99 features should be evaluated against four boundaries: language semantics, compiler support, ABI/object representation, and project policy. Designated initialization is usually a low-risk readability improvement; VLAs and `restrict` demand stronger architectural reasoning.
+
+C99 also made it easier to write numerical and portable code, but the language still does not make a particular MCU's integer width, alignment, endianness, floating-point hardware, or ABI universal.
+
+## Common mistakes
+- Treating `restrict` as an optimization directive rather than a semantic contract.
+- Assuming every C99 feature is supported equally by every embedded compiler.
+- Using VLAs without a defensible stack bound.
+- Assuming designated initialization implies a particular binary layout.
+
+## Verification
+Compile with the project's actual language mode and warnings enabled. For ABI-sensitive code, inspect object layout and generated assembly. For stack-sensitive code, measure and bound worst-case depth rather than relying on nominal tests.
+
+## Staff-level view
+Modernization should be evidence-driven. Select features because they reduce defect probability or improve maintainability, then verify compiler, static-analysis, certification and binary-impact consequences. A language feature is an engineering tool, not a maturity badge.
 
 ## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+- [[01_C89_C90_heritage]]
+- [[05_C23_modernization]]
+- [[08_Implementation_defined_behavior]]
+- [[37_C_Compiler_Optimization]]
