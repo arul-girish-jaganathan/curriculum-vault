@@ -1,44 +1,29 @@
-# Hosted vs freestanding
+# Hosted vs Freestanding
 
-> Canonical C topic note — chapter 01.
+ISO C distinguishes hosted and freestanding implementations. The distinction is fundamental for embedded systems because a bare-metal firmware environment may not provide the assumptions associated with a general-purpose hosted environment.
 
-## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Hosted vs freestanding**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+## Hosted implementation
+A hosted implementation provides the complete required language environment and standard library facilities defined for hosted implementations. The program startup and execution environment are therefore governed by the implementation's hosted requirements.
 
-## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+## Freestanding implementation
+A freestanding implementation is permitted a smaller execution environment and is intended for systems where a full host environment is unavailable or inappropriate. This is common in firmware, boot code and low-level runtime environments.
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+## What this changes
+A freestanding implementation does not mean “anything goes.” ISO C still defines language semantics and required portions of the freestanding environment. But facilities such as general file I/O or process-oriented behavior cannot simply be assumed to exist because they exist on Linux or Windows.
 
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+## Embedded boundary
+The startup symbol, vector table, reset handler, memory initialization, interrupt mechanism, linker script, peripheral access and RTOS startup are implementation/platform concerns. The C standard does not specify how an MCU enters `main`, how `.data` is copied from flash, how `.bss` is cleared, or how a watchdog reset is recorded.
 
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+## Common mistake
+“Bare metal means C is non-standard” is wrong. A firmware project can use conforming C language constructs in a freestanding implementation while depending on documented implementation and hardware interfaces at its system boundary.
 
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
+## Verification
+Record the target's claimed C conformance profile, compiler mode, library subset and startup model. Test standard-library availability instead of assuming hosted APIs exist.
 
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
-```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
-```
-
-## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
-
-## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+## Staff-level view
+Architecture documents should explicitly label the boundary between ISO C, compiler/runtime support and hardware. This prevents portability arguments from being applied to the wrong layer.
 
 ## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+- [[08_Implementation_defined_behavior]]
+- [[54_C_Freestanding_Hosted_Conformance]]
+- [[83_C_Start_Up_Runtime]]
