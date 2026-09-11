@@ -1,44 +1,27 @@
-# Parsing and semantic analysis
+# Parsing and Semantic Analysis
 
-> Canonical C topic note — chapter 02.
+Parsing determines whether the token stream conforms to C grammar; semantic analysis determines whether the resulting constructs satisfy the language's type and constraint rules. These are compiler concepts rather than runtime phases.
 
-## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Parsing and semantic analysis**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+## Parsing
+The parser builds an internal representation corresponding to declarations, expressions, statements and other grammar constructs. Precedence and associativity affect how expressions are grouped. A syntactically valid expression can still be semantically invalid.
 
-## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+## Semantic analysis
+Type compatibility, required conversions, constraints on declarations and expressions, object/function rules, and many diagnostics are established here. The compiler must diagnose violations for which the standard requires a diagnostic, but diagnostic wording and recovery behavior are implementation-specific.
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+## Why this matters in firmware
+A warning-free build is not proof of semantic correctness. The compiler can accept code that is well-formed but logically wrong, violates a hardware protocol, races with an ISR, accesses a peripheral incorrectly, or depends on an invalid assumption outside the language model.
 
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+## Optimization boundary
+After semantic analysis, the compiler is free to transform a conforming program while preserving the observable behavior required by the language and implementation environment. Undefined behavior removes constraints and can therefore permit aggressive transformations.
 
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+## Debugging workflow
+Classify the first diagnostic rather than the last cascade. Reduce the translation unit if necessary, inspect preprocessing output, verify the selected standard mode, and then inspect types and declarations. Do not “fix” diagnostics by casts until the intended type relationship is understood.
 
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
-```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
-```
-
-## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
-
-## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+## Staff-level view
+Compiler diagnostics are design feedback. A mature codebase treats warning policy, static analysis and build configuration as part of its language contract and avoids suppressing diagnostics without a documented reason.
 
 ## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+- [[03_Tokenization]]
+- [[05_Constant_expressions]]
+- [[07_Assembly_inspection]]
+- [[39_C_Diagnostics_Static_Analysis]]
