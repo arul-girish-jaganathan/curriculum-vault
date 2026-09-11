@@ -1,44 +1,27 @@
-# Object code generation
+# Object Code Generation
 
-> Canonical C topic note — chapter 02.
+Object-code generation maps the compiler's internal representation to target instructions and data representations while preserving the semantics required by the selected C implementation and target environment.
 
-## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Object code generation**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+## What is generated
+Typical output includes machine instructions, constant data, relocation records, symbol information and sections that later participate in linking. The exact object format and instruction selection are toolchain and target dependent.
 
-## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+## Optimization
+Register allocation, instruction selection, constant propagation, inlining, dead-code elimination and other transformations can substantially change the binary while preserving required behavior. Optimization is allowed to exploit the assumptions made by the language contract; undefined behavior can therefore produce surprising transformations.
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+## Embedded concerns
+Code generation affects flash size, RAM use, execution time, interrupt latency, stack usage and power. A source-level micro-optimization is meaningless until its generated code and system-level effect are measured.
 
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+## Volatile and hardware
+Accesses to volatile-qualified objects have language-level requirements concerning observable accesses, but volatile is not a universal cache, synchronization or memory-barrier mechanism. MMIO correctness depends on the compiler, CPU memory system and peripheral specification together.
 
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+## Verification
+Use compiler-generated assembly, object dumps and map files to answer “what actually shipped?” Keep source semantics as the primary correctness argument; assembly inspection is evidence about a particular compiler/target configuration.
 
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
-```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
-```
-
-## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
-
-## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+## Staff-level view
+Treat generated code as a measurable artifact with budgets: text size, data size, cycles, stack and latency. Make those budgets part of regression testing when performance or resource margins are product requirements.
 
 ## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+- [[07_Assembly_inspection]]
+- [[08_Compiler_driver_stages]]
+- [[11_LTO_and_whole_program_optimization]]
+- [[37_C_Compiler_Optimization]]
