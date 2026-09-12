@@ -1,43 +1,60 @@
 # Fault containment
 
-> Canonical C topic note — chapter 42.
+> Canonical C topic note — Chapter 42. Fault containment limits the consequences of an error so that one failed component does not corrupt unrelated state or compromise the entire system.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Fault containment**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+Containment is an architectural property implemented through boundaries, ownership, validation, state machines, watchdogs, MPU/MMU protections, process/task separation, and controlled recovery. ISO C itself does not provide fault containment; C code participates in a larger execution environment.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+Containment begins by identifying what may fail and what must remain trustworthy. A failure contract should specify detection, containment boundary, recovery action, and resulting state. Memory safety defects such as out-of-bounds writes can defeat software containment unless hardware protection or stronger verification catches them.
 
 ### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+- Which state can the failing component modify?
+- Which resources must remain available for recovery?
+- Can corrupted data cross the API boundary?
+- Is recovery idempotent?
+- What evidence must survive the fault?
+
+Do not assume that returning an error contains a fault if memory may already be corrupted.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+Typical containment boundaries include RTOS tasks, protected memory regions, peripheral ownership, communication parsers, and independent watchdog domains. A driver failure may be contained by resetting one peripheral rather than rebooting the whole MCU, provided shared state is still trustworthy.
 
 ### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+Define a degraded state that is safer than continuing with uncertain state. For safety-related functions, determine whether isolation must be hardware-enforced. Recovery paths need their own timing, stack, and power-failure analysis.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
+- Corrupted control data escapes the intended boundary.
+- Recovery uses the same failed resource and loops.
+- Fault handler relies on a corrupted stack or heap.
+- A shared singleton defeats task-level isolation.
+- Partial hardware reset leaves stale peripheral state.
 
 ## Example pattern
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
+status_t comm_service_step(void)
 {
-    return x;
+    status_t st = parser_step();
+    if (st != STATUS_OK) {
+        parser_reset();
+        return STATUS_DEGRADED;
+    }
+    return STATUS_OK;
 }
 ```
+This is only containment if `parser_reset()` and all parser-owned state are trustworthy and isolated from unrelated services.
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Inject malformed inputs, timeouts, memory pressure, and peripheral failures. Verify that the fault stays within the intended boundary and that recovery reaches a known state. Use MPU faults, watchdog resets, and fault-injection tests where supported.
+
+Staff-level questions:
+- What is the smallest effective containment boundary?
+- Which state remains trustworthy after failure?
+- Is recovery safer than reset?
+- What hardware protection is required?
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+Containment is **about limiting blast radius**, not merely returning an error. Establish explicit ownership and protection boundaries and define a recovery state that remains safe even when local state is suspect.
 
 ## Related
 [[00_Chapter_Index]]
