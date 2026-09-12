@@ -3,41 +3,28 @@
 > Canonical C topic note — chapter 37.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Optimization-safe C**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+Optimization-safe C is code whose correctness follows from the language, documented implementation contracts, and explicit hardware/concurrency contracts rather than from a particular optimizer's current behavior.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+Core practices are: eliminate undefined behavior; respect object lifetime, bounds, alignment and aliasing; use correct integer types; establish sequencing; distinguish `volatile` from atomics; and document implementation extensions.
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
-
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
-
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
-
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
+bool ready = atomic_load_explicit(&state, memory_order_acquire);
 ```
 
+A correct synchronization primitive gives the compiler and hardware the information needed for concurrent correctness. Replacing it with “the compiler probably won't reorder this” is not a contract.
+
+## Embedded implications
+Use volatile for genuine externally observable objects such as MMIO, atomics/RTOS primitives for shared state, explicit barriers for hardware ordering, and fixed-width types where representation matters. Keep timing-critical requirements measurable rather than encoded as accidental instruction counts.
+
+## Edge cases and failure modes
+Common symptoms include release-only crashes, infinite polling loops, stale shared data, incorrect peripheral sequencing, and optimized-away diagnostics. Disabling optimization is generally a diagnostic experiment, not a fix.
+
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Run aggressive warnings, static analysis, sanitizers, and tests on host builds. Build target firmware at production optimization. Inspect assembly for hardware-sensitive functions and measure cycle counts, stack, image size, and interrupt latency.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+The goal is not to write code that survives one compiler. The goal is to write code whose assumptions are explicit enough that multiple conforming compilers, optimization levels, and target configurations preserve the intended behavior.
 
 ## Related
 [[00_Chapter_Index]]
