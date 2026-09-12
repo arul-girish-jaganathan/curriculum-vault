@@ -1,43 +1,54 @@
 # Nested interrupts
 
-> Canonical C topic note — chapter 44.
+> Canonical C topic note — Chapter 44. Nested interrupts occur when a higher-priority interrupt preempts an ISR that is already executing. The behavior is target-specific and must be analyzed as an interrupt-priority and stack-depth problem.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Nested interrupts**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+With nesting enabled, interrupt context can form a stack: task -> ISR A -> ISR B -> ... . Hardware and startup/runtime code determine what state is saved at each entry. ISO C does not define nesting.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+Nested execution increases the number of active contexts and therefore stack consumption. Shared state may be accessed by several priority levels, creating ordering and atomicity requirements beyond ordinary task/ISR interaction.
 
 ### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+- Which priorities can preempt which?
+- Are interrupts masked during critical portions?
+- How much hardware/software context is saved per nesting level?
+- Can the same peripheral generate nested events?
+- Are shared structures safe under priority-based preemption?
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+Worst-case interrupt latency and stack use must include maximum nesting. A lower-priority ISR can be delayed by repeated high-priority events, causing starvation or deadline misses.
 
 ### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+Define a maximum nesting depth and verify it under worst-case interrupt arrival. Keep high-priority handlers extremely bounded. Avoid calling complex shared services from multiple interrupt priorities without an explicit serialization strategy.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
+- Stack overflow due to unexpected nesting.
+- Priority inversion/starvation from interrupt storms.
+- Shared data updated by multiple priority levels without atomicity.
+- Interrupt source not cleared, causing recursive re-entry.
+- Debugging hides nesting because halting suppresses or changes interrupt behavior.
 
 ## Example pattern
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
+void HIGH_IRQHandler(void)
 {
-    return x;
+    capture_urgent_event();
+    clear_high_irq();
+}
+
+void LOW_IRQHandler(void)
+{
+    queue_event_from_isr();
+    clear_low_irq();
 }
 ```
+The actual priority and nesting policy is configured outside ISO C and must be verified against the MCU architecture.
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Measure worst-case nesting with trace or GPIO instrumentation. Test simultaneous interrupt sources and sustained high-priority load. Validate stack high-water marks and exception-frame decoding.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+Nested interrupts are fundamentally a **worst-case resource analysis problem** involving priority, latency, stack, and shared state. Average interrupt behavior is not sufficient evidence for correctness.
 
 ## Related
 [[00_Chapter_Index]]
