@@ -3,41 +3,25 @@
 > Canonical C topic note — chapter 39.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **CI quality gates**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+A CI quality gate turns diagnostics and analysis into enforceable release criteria. A useful gate measures defect risk, not merely whether a tool executed successfully.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
-
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+Typical gates include clean compilation, selected warnings as errors, static-analysis severity limits, MISRA/CERT findings, sanitizer tests, unit coverage, image-size limits, and artifact provenance. Each gate needs an owner and an explicit exception process.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
-
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+Firmware gates should include all supported configurations and the exact production build. Memory-map overflow, ABI mismatch, generated-code drift, and target-specific diagnostics must not be hidden behind a host-only green build.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
-```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
-```
+- Gates that check only one build variant.
+- Unreviewed suppressions bypassing analysis.
+- Flaky hardware-in-loop tests blocking unrelated work.
+- Measuring coverage without meaningful fault assertions.
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Keep gate configuration version-controlled. Make failures actionable and archive reports. Periodically test that intentionally introduced defects fail the expected gate; otherwise a gate may exist only on paper.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+A quality gate is a tested control. Its effectiveness should itself be demonstrated through seeded defects, audits, and trend metrics.
 
 ## Related
 [[00_Chapter_Index]]
