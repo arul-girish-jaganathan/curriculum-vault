@@ -1,28 +1,35 @@
 # Suppression discipline
 
-> Canonical C topic note — chapter 39.
-
 ## Definition
-Suppression discipline is the controlled process for excluding a known, justified analyzer or compiler finding without hiding unrelated defects.
+**Suppression discipline** is the controlled process for silencing a diagnostic only when the finding is understood, the underlying code is intentionally acceptable, and the exception is documented and bounded. Suppression is a risk decision, not a cleanup operation.
+
+## Scope and boundaries
+Suppression mechanisms are tool-specific: source annotations, configuration files, generated-code filters, or command-line options. Prefer the narrowest mechanism that does not hide unrelated findings.
 
 ## Mechanism and language rules
-A good suppression identifies rule, location/scope, reason, evidence, owner, and review condition. Prefer source-local or module-local suppression over global disablement. If the tool supports baselines, use them for legacy debt rather than making every finding permanently invisible.
+A useful suppression record contains:
+
+```text
+rule/finding + location + reason + invariant/evidence + owner + review condition
+```
+
+For example, a deliberate conversion may be acceptable because a validated protocol field is known to fit a smaller type. The evidence should be explicit rather than “this is safe.”
 
 ## Embedded implications
-Suppression is particularly sensitive in safety/security code. A deviation around a register access may be valid, while the same broad rule suppression could hide unsafe pointer arithmetic elsewhere.
+Firmware commonly has justified exceptions for register access, compiler extensions, packed protocol formats, startup assembly, or vendor headers. These are exactly the areas where broad suppression can hide serious defects. Keep third-party suppression boundaries separate from application code.
 
 ## Edge cases and failure modes
-- File-wide disablement for one line.
-- No rationale or expiry.
-- Suppressions copied after refactoring to unrelated code.
-- Treating tool limitations as proof of safety.
+- Global suppression for convenience.
+- Suppression copied into unrelated code.
+- A deviation survives after the implementation changes.
+- Suppression reason describes syntax but not the safety invariant.
+- Tool upgrades silently reinterpret suppression directives.
 
 ## Verification / debugging
-Review suppressions as code. CI should detect unexplained additions, stale suppressions, and policy violations. Re-run analysis after tool upgrades to see whether old suppressions remain necessary.
+Review suppressions periodically. Require owners for high-risk deviations. CI should detect malformed or stale suppressions where the analyzer supports it. Prefer a source-level wrapper or typed abstraction that eliminates repeated exceptions.
+
+## Performance, memory, timing and power
+Suppressions affect analysis time and signal quality, not target runtime. Eliminating the need for repeated exceptions can simplify code and reduce long-term maintenance cost.
 
 ## Staff-level takeaway
-Every suppression spends part of the project's defect-detection budget. Spend it narrowly and record why.
-
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+A suppression should read like a **mini design decision**: what was found, why it is acceptable, what proves that, and when the exception must be reconsidered.
