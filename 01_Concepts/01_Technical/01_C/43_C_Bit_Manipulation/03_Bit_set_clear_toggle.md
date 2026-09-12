@@ -1,47 +1,55 @@
-# Bit set/clear/toggle
+# Bit set clear toggle
 
-> Canonical C topic note — Chapter 43. Set, clear, and toggle operations are common transformations of an integer bitfield, but MMIO registers require hardware-specific semantics beyond ordinary C bitwise behavior.
+> Canonical C topic note — Chapter 43. Setting, clearing, and toggling individual bits are common low-level operations, but the safe implementation depends on type width and whether the storage is ordinary memory or a hardware register.
 
 ## Definition
-For a mask `m`: set with `x |= m`; clear with `x &= ~m`; toggle with `x ^= m`; test with `(x & m) != 0`. These operate on ordinary integer objects according to C's integer promotions and bitwise rules.
+For a value `x` and mask `m`: set uses `x | m`, clear uses `x & ~m`, and toggle uses `x ^ m`. Test uses `(x & m) != 0`.
 
 ## Mechanism and language rules
-The compound assignment reads the left operand, performs the operation, and stores the result. Therefore it is a read-modify-write sequence at the machine level unless the compiler can use a specialized instruction. It is not automatically atomic with respect to another thread, ISR, or hardware agent.
+Use unsigned values for bit manipulation. Because `~` applies after integer promotion, a clear operation can accidentally affect bits outside a narrow intended field unless the value is explicitly converted/masked to the correct width.
 
 ### What to reason about
-- Is the object shared concurrently?
-- Is it ordinary RAM or MMIO?
-- Does `~m` have the intended width after promotions?
-- Are multiple bits represented by one mask?
-- Does the hardware provide atomic set/clear/toggle registers?
+- Is the mask one bit or a field mask?
+- What type does integer promotion produce?
+- Is the operation performed on RAM, an atomic object, or MMIO?
+- Can another execution context update the same word?
+- Does the hardware provide atomic set/clear operations?
+
+For ordinary shared memory, a read-modify-write sequence is not automatically atomic merely because each C expression looks small.
 
 ## Embedded implications
-For ordinary RAM shared with an ISR, `flags |= MASK` can race with an ISR clearing another flag. For MMIO, read-modify-write may lose write-one-to-clear events or alter reserved bits.
+GPIO flags, status words, permission bits, and peripheral registers commonly use these operations. For MMIO, a generic `reg = reg | mask` may be wrong for write-one-to-clear, write-one-to-set, command, or read-sensitive registers.
 
 ### Firmware review angle
-Use atomic hardware aliases or critical sections when required. For software flags shared between contexts, use an appropriate atomic type/operation or a concurrency protocol rather than assuming a single C statement is indivisible.
+Provide semantic helpers such as `set_bits`, `clear_bits`, and `test_bits` only when their hardware meaning is known. Prefer peripheral-provided atomic aliases where available.
 
 ## Edge cases and failure modes
-- Clearing with `~MASK` can affect unintended high bits if width is implicit.
-- Read-modify-write loses concurrent changes.
-- Toggling a status bit with `^=` may be meaningless for hardware state machines.
-- A macro may evaluate its register argument multiple times.
+- `~mask` changes unintended high bits.
+- Concurrent read-modify-write loses another writer's update.
+- Toggle is not idempotent and repeated execution changes state again.
+- Register access semantics make read-modify-write invalid.
 
 ## Example pattern
 ```c
-#define FLAG_RX_READY (UINT32_C(1) << 3)
+uint32_t set_bit(uint32_t value, unsigned bit)
+{
+    return value | (UINT32_C(1) << bit);
+}
 
-flags |= FLAG_RX_READY;
-flags &= ~FLAG_RX_READY;
-flags ^= FLAG_RX_READY;
+uint32_t clear_bit(uint32_t value, unsigned bit)
+{
+    return value & ~(UINT32_C(1) << bit);
+}
 ```
-For a 32-bit `flags`, the mask type should be chosen deliberately.
+The caller must guarantee `bit < 32`.
 
 ## Verification / debugging
-Test each operation with zero, all-one, adjacent-bit, and concurrent-update cases. For MMIO, inspect the vendor-defined write semantics and generated bus accesses. Use race analysis or atomic instrumentation for shared RAM.
+Test bit 0, the highest valid bit, adjacent bits, and invalid positions. For shared state, test interrupt/task races. For registers, verify access semantics against the reference manual and inspect bus transactions if necessary.
+
+Staff-level questions: Is this operation atomic for every writer? Is toggle safe to retry? Does the mask encode only the owned field?
 
 ## Staff-level takeaway
-Set/clear/toggle syntax is easy; the engineering question is whether the **read-modify-write transaction is valid for the ownership and hardware model**. Treat atomicity and register semantics as first-class requirements.
+Bit operations are safe when **width, ownership, atomicity, and hardware semantics** are explicit. Never assume a read-modify-write is universally safe at a hardware boundary.
 
 ## Related
 [[00_Chapter_Index]]
