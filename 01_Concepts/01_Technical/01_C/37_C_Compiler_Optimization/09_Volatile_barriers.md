@@ -3,41 +3,35 @@
 > Canonical C topic note — chapter 37.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Volatile barriers**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+`volatile` tells the implementation that accesses to the qualified object are observable and must follow the language's volatile-access rules. It is commonly used for MMIO and objects affected by mechanisms outside ordinary C execution. It is **not** a general compiler barrier, CPU memory barrier, atomicity primitive, or inter-thread synchronization mechanism.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
-
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
-
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
-
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
-
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
+volatile uint32_t *status = (volatile uint32_t *)REG_STATUS;
+uint32_t s = *status;
 ```
 
+The compiler must preserve the required volatile accesses; it may still optimize ordinary computations around them within the language rules. A compiler-specific barrier such as an empty inline assembly memory clobber has a different scope, and a hardware barrier such as ARM `dmb`/`dsb` addresses processor ordering rather than merely compiler reordering.
+
+C atomics provide language-level synchronization and atomicity properties that volatile does not provide.
+
+## Embedded implications
+For MMIO, use the vendor's prescribed volatile-qualified register definitions and hardware ordering primitives where required. For device protocols, distinguish: (1) compiler visibility, (2) CPU memory ordering, (3) bus/device ordering, and (4) data atomicity. A design may need all four.
+
+A volatile access can have timing and power cost because each access is emitted and may reach a peripheral bus. Repeated polling should therefore have explicit timeout and latency policies.
+
+## Edge cases and failure modes
+- `volatile` shared variable used as a thread synchronization flag.
+- Assuming a volatile 32-bit access is atomic on every target.
+- Assuming volatile creates a CPU memory barrier.
+- Applying volatile to a pointer rather than the intended object qualification.
+- Using volatile to hide a data race or aliasing defect.
+
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Inspect assembly around MMIO and synchronization points. Read the MCU reference manual for required barrier sequences and access widths. For concurrent code, use C atomics or the RTOS synchronization primitive and test on the target.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+When reviewing volatile code, ask which boundary it addresses: compiler, CPU, bus, peripheral, or concurrency. If the answer is unclear, `volatile` is probably being asked to solve the wrong problem.
 
 ## Related
 [[00_Chapter_Index]]
