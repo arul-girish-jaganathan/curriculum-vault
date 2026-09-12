@@ -3,41 +3,25 @@
 > Canonical C topic note — chapter 40.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Sanitizer triage**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+Sanitizer triage is the disciplined process of turning an instrumentation report into a root-cause defect, fix, and regression test.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
-
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+Start with the first meaningful report, not the final cascade. Identify operation, object lifetime, bounds, types, thread context, and the contract violated. Distinguish primary memory corruption from secondary crashes caused by the corrupted state.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
-
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+For firmware, map host findings back to target memory models and then test hardware-specific boundaries separately. A host sanitizer finding in parser code may be directly applicable; a finding involving MMIO semantics requires target-aware validation.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
-```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
-```
+- Fixing the symptom rather than the ownership/bounds defect.
+- Ignoring the first report because a later crash looks more obvious.
+- Suppressing flaky failures instead of making the test deterministic.
+- Failing to add a regression case.
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Preserve the crashing input, sanitizer configuration, stack trace, compiler version, and relevant build flags. Minimize the case, fix the root contract violation, rerun all relevant sanitizers, and add the input to regression coverage.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+Triage closes the loop between dynamic evidence and engineering change. A sanitizer is valuable only when reports reliably become fixes and durable tests.
 
 ## Related
 [[00_Chapter_Index]]
