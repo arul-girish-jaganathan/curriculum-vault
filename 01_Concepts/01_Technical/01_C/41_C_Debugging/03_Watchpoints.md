@@ -3,12 +3,16 @@
 > Canonical C topic note — chapter 41.
 
 ## Definition
-A watchpoint stops execution when a selected memory location is accessed or modified. Unlike a source breakpoint, which targets control flow, a watchpoint targets data behavior. Watchpoints are debugger facilities, not ISO C language features.
+A watchpoint stops execution when a selected memory location is accessed or modified. It is a data-oriented debugging mechanism: breakpoints answer “where did control flow reach?”, while watchpoints answer “which execution caused this memory access?”. Watchpoints are debugger/processor facilities, not ISO C language features.
 
 ## Mechanism and language rules
-Many processors provide debug comparators that match an address, access type, and sometimes access size. A write watchpoint can reveal which instruction corrupts a variable. A read watchpoint can reveal unexpected consumers. Exact size, alignment, address range, and comparator count are architecture-specific.
+Many CPUs implement debug comparators that match an address, access direction, and sometimes access width. Exact capabilities vary by architecture.
 
-The important distinction is **source object versus physical address**. A C object may move between registers and memory under optimization. If `x` is register-resident, a hardware memory watchpoint cannot observe every logical change to `x` because no memory write occurs.
+The critical distinction is:
+
+`C object identity ≠ guaranteed physical memory location`
+
+The compiler may keep a variable in a register, recompute it, spill it only temporarily, split its live range, or eliminate it. A memory watchpoint therefore observes **memory traffic**, not every logical change to a C object.
 
 ```c
 struct state {
@@ -18,34 +22,67 @@ struct state {
 
 static struct state s;
 ```
-A watchpoint on `s.count` is useful for finding an unexpected writer, but only while the object actually resides at that stable address.
+A watchpoint on `s.count` is useful while that object has a stable address and CPU stores are the suspected corruption mechanism.
+
+### Access type and width
+A write watchpoint is appropriate for unexpected modification; a read watchpoint identifies consumers. Some targets require natural alignment or offer only specific widths. One watchpoint may therefore cover a larger range than expected.
+
+### Software watchpoints
+Where hardware support is absent, a debugger may implement a software watchpoint by periodically reading the value and comparing it. This is slower and may miss short-lived changes between samples. It can also perturb timing substantially.
 
 ## Embedded implications
-Watchpoints are powerful for stack corruption, buffer overruns, MMIO access, and ownership violations, but target hardware often has very few resources. A watched MMIO address can be especially dangerous: observing accesses to a peripheral register may alter timing or interact with clear-on-read/status semantics.
+Watchpoints are especially useful for:
 
-For DMA, a CPU watchpoint may not detect a DMA engine writing the buffer because the transfer does not execute a CPU load/store instruction. Use DMA descriptors, peripheral status, memory poisoning, MPU faults, trace, or post-transfer validation instead.
+- stack corruption;
+- buffer overrun detection;
+- state-machine fields changing unexpectedly;
+- ownership violations between tasks;
+- accidental writes to control structures;
+- locating CPU-side MMIO traffic.
 
-### Alignment and granularity
-Some debug units require naturally aligned addresses and support only certain access sizes. A request to watch one byte may consume a comparator that matches a larger aligned region, depending on the architecture.
+They have important blind spots. A DMA engine, peripheral, coprocessor, or another CPU can modify memory without executing a CPU instruction that a local hardware watchpoint can catch. A cache or bus fabric can further complicate the observation boundary.
+
+Watching MMIO is also risky. Some registers are clear-on-read, pop-on-read, write-one-to-clear, or timing-sensitive. A debugger inspection that reads them can change the hardware state.
+
+### Example
+```c
+static uint8_t frame[128];
+
+void receive_byte(uint8_t b)
+{
+    frame[write_index++] = b;
+}
+```
+If `write_index` is unexpectedly large, a watchpoint on a nearby guard word can reveal the first CPU store that crosses the intended boundary. It does not prove that a DMA transfer or another execution agent is not also corrupting memory.
 
 ## Edge cases and failure modes
-- Optimized variables can be unavailable or register-resident.
-- Compiler-generated stores may make the apparent source writer different from the logical assignment.
-- A watchpoint may trigger repeatedly because of polling or stack traffic.
-- DMA, another core, or a peripheral may modify memory without CPU debug-watchpoint support.
-- Hardware watchpoint resources can be exhausted.
-- Watching a shared variable in concurrent code can stop execution before the race reproduces naturally.
+- Optimized variables can be register-resident or unavailable.
+- The compiler may emit multiple stores for one source-level assignment.
+- A watchpoint may trigger repeatedly on legitimate polling or stack traffic.
+- DMA/peripheral/other-core writes may not trigger the CPU's watchpoint logic.
+- Hardware comparator resources are limited.
+- Watching a shared variable can perturb a race enough to hide it.
+- A watched address can become invalid after object lifetime ends or storage is reused.
+- Memory attributes, security domains, or debug permissions may prevent observation.
 
 ## Verification / debugging
-When searching for memory corruption, first establish the object lifetime and exact address. Record the watchpoint access type and width. When it triggers, inspect the PC, instruction, stack frame, register values, and caller chain. Then determine whether the access is the intended source-level operation or compiler-generated support code.
+When investigating corruption:
 
-For difficult corruption, surround buffers with guard values and periodically validate them. Combine this with sanitizers on host builds and MPU/watchpoint facilities on target builds.
+1. Establish the object's lifetime and exact address.
+2. Record expected size and alignment.
+3. Select read/write/access watch type deliberately.
+4. When triggered, capture PC, instruction, registers, stack frame, and access width.
+5. Determine whether the instruction corresponds directly to the source assignment.
+6. Check DMA descriptors, interrupts, other cores, and peripheral writers.
+
+For persistent buffers, combine watchpoints with guard values, MPU protection where available, host sanitizers, and periodic integrity checks. For large corruption domains, instrument ownership boundaries instead of placing dozens of individual watchpoints.
 
 ## Staff-level takeaway
-Watchpoints answer a precise question: **which execution agent touched this location, and when?** They do not prove that the C object model is being respected. For DMA, multicore, MMIO, optimized code, or lifetime bugs, combine debugger evidence with ownership, synchronization, linker/map information, and target trace rather than relying on one watchpoint.
+A watchpoint provides a precise physical observation: **a particular memory access occurred at a particular execution point**. It does not by itself prove compliance with C lifetime, aliasing, concurrency, or ownership rules. For DMA and multicore systems, define the complete set of possible writers before concluding that the observed CPU write is the root cause.
 
 ## Related
 [[00_Chapter_Index]]
 [[02_Breakpoints]]
 [[06_Memory_inspection]]
 [[10_Fault_localization]]
+[[../26_C_Lifetime_Aliasing/00_Chapter_Index]]
