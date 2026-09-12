@@ -1,44 +1,67 @@
 # Constant propagation
 
-> Canonical C topic note — chapter 37.
-
 ## Definition
-Constant propagation substitutes a value known to be constant for a variable or expression and then enables further simplification. It is an optimizer transformation, not a promise that every `const` object becomes a compile-time constant.
+**Constant propagation** is an optimization in which a compiler tracks values known to be constant and substitutes those values into later expressions. It is closely related to constant folding, copy propagation, dead-code elimination, and branch simplification. The optimization is valid only when the compiler can prove the relevant value and side-effect rules.
+
+## Scope and boundaries
+The C programmer does not need to manually perform every constant calculation. The important job is to express correct invariants using appropriate types, `const`, enumerations, macros, static initialization, and well-defined control flow. `const` itself is primarily a type qualifier, not a universal promise that an object is compile-time constant.
 
 ## Mechanism and language rules
-The compiler builds value information from initializers, control flow, interprocedural facts, and target assumptions. Related transformations include constant folding, copy propagation, range analysis, and conditional simplification.
+Consider:
 
 ```c
-static int limit(void)
+static int mode_value(int mode)
 {
-    const int n = 16;
-    return n * 2;
+    if (mode == 3)
+        return 100;
+    return 0;
 }
 ```
 
-The compiler may produce the constant `32`. A `const` object can still have an address and storage, so the C qualifier alone does not establish that it is an integer constant expression. `static const` data may be placed in read-only storage by the implementation, but that is not the same as C language `const` guaranteeing physical ROM.
+If a caller passes a provably constant `3`, interprocedural optimization may replace the call with `100`. Even without inlining, local analysis can propagate constants through basic blocks.
 
-A value may become constant only along one control-flow path. Optimizers track these facts and invalidate them when assignments or possible aliases make the value uncertain.
+### Constant folding versus propagation
+Constant folding evaluates an expression whose operands are known constants. Propagation moves a known value to another use. Example:
+
+```c
+int f(void)
+{
+    int x = 8;
+    int y = x * 4;
+    return y + 1;
+}
+```
+
+A compiler can propagate `8`, fold `8 * 4`, and ultimately return `33`.
+
+### Control-flow simplification
+Known conditions can remove branches:
+
+```c
+if (CONFIG_FEATURE == 0) {
+    /* code can disappear when the configuration is compile-time known */
+}
+```
+
+This is especially powerful in embedded configuration code when constants are visible to the optimizer.
 
 ## Embedded implications
-Propagation can remove loads, branches, table lookups, and arithmetic, reducing cycles, flash, and power. It can also specialize drivers for compile-time board configuration. Conversely, hidden aliasing or undefined behavior can cause the compiler to infer a constant that conflicts with hardware reality.
+Compile-time-known hardware configuration can eliminate unused driver paths, reduce flash, and shorten startup. A constant buffer length can enable bounds simplification; a fixed protocol field can eliminate general parsing branches. Conversely, accidentally making a value appear constant when it must change asynchronously can create a serious bug. Hardware state must use the correct volatile or synchronization contract.
 
-For MMIO or asynchronously changing state, accesses that must occur must be represented with the appropriate volatile/atomic/concurrency contract. Do not create a normal local mirror and expect the compiler to observe hardware changes.
+`volatile` accesses are observable and cannot be freely treated as ordinary stable memory. An ordinary global shared with an ISR or thread is not made safe merely because a debug build happened to reload it.
 
 ## Edge cases and failure modes
-- Confusing `const` with compile-time constant.
-- Taking the address of an object and assuming storage must remain observable.
-- Reading a hardware-updated register through an ordinary object.
-- Relying on a debugger showing a variable that optimization eliminated.
-- Assuming a value is constant across an aliasing boundary without proving it.
-- Ignoring integer overflow rules when reasoning about folded expressions.
+- Confusing `const` with compile-time constantness.
+- Expecting a macro or enum to have the same object/linkage behavior as a variable.
+- Reading hardware through a non-volatile object and then blaming constant propagation.
+- Relying on signed-overflow behavior that is actually undefined.
+- Assuming propagation across a separate translation unit without LTO or equivalent visibility.
 
 ## Verification / debugging
-Use compiler optimization reports, intermediate-representation dumps where available, and disassembly. Check whether a supposedly runtime value disappeared. When behavior is wrong only under optimization, investigate aliasing, lifetime, data races, volatile qualification, and undefined behavior before disabling optimization.
+Compile with optimization reports enabled when available and inspect assembly. If a value unexpectedly disappears, identify which invariant allowed the compiler to prove it. Compare LTO and non-LTO builds. Static analysis can expose writes that are unreachable or ineffective.
+
+## Performance, memory, timing and power
+Propagation often reduces loads, branches, multiplications, and memory traffic. It can shrink flash and improve deterministic execution. It may also expose larger opportunities for dead-code elimination and inlining. Reduced memory traffic can lower energy consumption on systems where memory accesses dominate.
 
 ## Staff-level takeaway
-Constant propagation is a consequence of trustworthy contracts. Keep configuration immutable, make hardware and concurrency boundaries explicit, and verify generated code when the distinction between a load and a constant has system-level consequences.
-
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+The strongest optimization technique is not a clever flag; it is making real invariants visible to the compiler without lying about hardware or concurrency. When a value is truly fixed, express that fact in the most precise C construct available and verify the generated image.
