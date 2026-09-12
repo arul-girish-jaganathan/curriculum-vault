@@ -3,41 +3,27 @@
 > Canonical C topic note — chapter 38.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Target triples**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+A target triple identifies the broad compilation target, conventionally using architecture, vendor, operating system, and environment components, such as `arm-none-eabi`. It is a toolchain identity, not a complete description of every MCU option.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+The triple influences compiler defaults, ABI, runtime libraries, assembler syntax, and linker behavior. Additional options select a concrete CPU, ISA extensions, floating-point unit, ABI variant, and tuning strategy.
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+For example, two builds may share `arm-none-eabi` but differ in Cortex-M core, floating-point instructions, optimization tuning, or vendor-specific startup code.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
-
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+The target identity must match silicon and board assumptions. Wrong ISA/FPU selection can cause immediate faults; wrong ABI can silently corrupt calls across object boundaries. A build manifest should therefore record triple plus CPU/architecture flags and library versions.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
-```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
-```
+- Treating the triple as sufficient hardware identification.
+- Mixing `arm-none-eabi` and Linux/ARM objects.
+- Selecting an ISA extension unsupported by the installed MCU.
+- Mixing hard-float and soft-float objects.
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Inspect compiler predefined macros, verbose compiler output, ELF attributes, and object metadata. Compile ABI probes and verify the final image's architecture attributes. Make the target tuple a CI input rather than an implicit workstation default.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+A target triple is the beginning of target identity, not the end. Record every ABI and ISA dimension that can affect interoperability or executable correctness.
 
 ## Related
 [[00_Chapter_Index]]
