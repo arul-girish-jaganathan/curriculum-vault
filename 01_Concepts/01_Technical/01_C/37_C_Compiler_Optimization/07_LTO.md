@@ -1,38 +1,44 @@
 # LTO
 
-> Canonical C topic note — chapter 37.
-
 ## Definition
-Link-time optimization (LTO) preserves compiler intermediate representation into the link stage so optimization can reason across translation-unit boundaries. It can expose calls, constants, aliases, and unused code that ordinary per-file compilation cannot see.
+**Link-time optimization (LTO)** allows the compiler to perform optimization with visibility across translation-unit boundaries. Instead of treating every object file as an opaque unit until linking, the toolchain preserves optimization information so the linker/compiler pipeline can inline functions, propagate constants, eliminate unreachable code, devirtualize applicable calls, and reason about whole-program relationships.
+
+## Scope and boundaries
+LTO does not change the C language rules. It changes how much of the program the implementation can see at optimization time. It can expose bugs that were accidentally masked by separate compilation, particularly invalid aliasing, violated `const` assumptions, missing declarations, and incorrect assumptions about external visibility.
 
 ## Mechanism and language rules
-Without LTO, `a.c` is generally compiled without seeing the implementation in `b.c`. With LTO, the optimizer can inline cross-TU functions, propagate constants, eliminate unreachable functions, devirtualize some indirect calls when provable, and perform whole-program analysis.
+With ordinary compilation, `a.c` and `b.c` are usually compiled separately. With LTO, optimization metadata or intermediate representation can survive into the link stage. Example:
 
 ```c
+/* api.h */
+int scale(int x);
+
 /* api.c */
-static int scale(int x) { return x * 4; }
+int scale(int x) { return x * 4; }
 ```
 
-The final machine code may differ substantially from non-LTO output even with identical source and optimization level. LTO is an implementation/toolchain feature, not an ISO C semantic requirement.
+A non-LTO build may require a real call. LTO can discover that `scale` is small, inline it, propagate a constant argument, and eliminate the function symbol if no externally required reference remains.
+
+### Linkage and visibility
+Internal-linkage `static` functions are easy for the compiler to reason about. External symbols may remain visible to unknown consumers unless the build proves otherwise. Visibility attributes and whole-program assumptions can affect the optimizer, but they are toolchain/ABI contracts rather than ISO C rules.
 
 ## Embedded implications
-LTO often reduces flash and improves hot-path performance, but it can also increase build time, change debug information, expose latent UB, alter symbol visibility assumptions, and remove functions or objects that firmware expected to discover indirectly.
+LTO can substantially reduce firmware flash and improve hot-path performance by removing abstraction overhead. It is especially effective in layered HAL/driver code where many small wrappers otherwise cross translation units. It can also change symbol availability, debug experience, section retention, startup code, and timing.
 
-Startup tables, interrupt vectors, registration mechanisms, linker-retained symbols, weak hooks, and assembly references require explicit toolchain retention contracts. Attributes such as `used`, linker `KEEP`, or explicit references may be required, depending on the toolchain.
+A production build should test the exact LTO configuration used for release. Debugging a non-LTO binary and assuming identical code generation in the release image is unreliable.
 
 ## Edge cases and failure modes
-- Assembly referencing a symbol that the compiler cannot see.
-- Constructor/registration tables removed as apparently unused.
-- Weak-symbol selection changing after whole-program visibility changes.
-- Debugger stepping becoming less intuitive.
-- Latent UB becoming visible only with LTO.
+- Missing prototypes or inconsistent declarations become more dangerous when optimization sees both sides.
+- Symbols expected by bootloaders, debuggers, scripts, or external tools may disappear or be transformed.
+- Inline/static definitions can interact with linkage and visibility mistakes.
+- Weak/strong symbol override patterns may behave differently when whole-program optimization is enabled.
+- LTO can expose undefined behavior that was previously hidden by call boundaries.
 
 ## Verification / debugging
-Build both LTO and non-LTO variants. Compare map files, symbol tables, section sizes, and disassembly. Test all registration/startup paths. Treat differences as expected until a contractual behavior is lost; then identify the missing compiler/linker visibility or retention rule.
+Build with and without LTO and compare map files, symbol tables, disassembly, section sizes, and runtime measurements. Verify required externally consumed symbols with `nm`, `objdump`, or equivalent tools. Add CI builds for both representative development and production configurations.
+
+## Performance, memory, timing and power
+Benefits include interprocedural inlining, constant propagation, dead-code elimination, better register allocation, and reduced call overhead. Costs include longer builds, higher peak compiler memory use, and potentially less predictable debug symbols. Code-size reduction can improve flash pressure and instruction locality, but aggressive inlining can also increase code size.
 
 ## Staff-level takeaway
-LTO turns the program from a collection of translation units into a larger optimization domain. Any mechanism that depends on invisible references must have an explicit retention and ABI contract.
-
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+LTO should be treated as part of the product's compiler contract, not as an optional final switch. Document the exact toolchain, flags, linker behavior, symbol-retention rules, and verification evidence for the release image.
