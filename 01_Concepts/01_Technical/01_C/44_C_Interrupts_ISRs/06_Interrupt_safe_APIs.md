@@ -1,51 +1,51 @@
 # Interrupt-safe APIs
 
-> Canonical C topic note — Chapter 44. An interrupt-safe API has a documented execution-context contract and avoids operations that are unsafe, blocking, non-reentrant, or unbounded in ISR context.
+> Canonical C topic note — Chapter 44. An interrupt-safe API has a contract appropriate for interrupt context: bounded execution, no unsafe blocking, valid shared-state handling, correct hardware access, and reentrancy behavior suitable for its callers.
 
 ## Definition
-An API is ISR-safe only when its implementation and all callees satisfy the required interrupt constraints. ISO C has no concept of ISR-safe functions.
+“ISR-safe” is not a property of a function name; it is a property of the complete implementation and its transitive callees on a specific platform. A function may be safe from one ISR but unsafe from another if locking, priority, or hardware assumptions differ.
 
 ## Mechanism and language rules
-Dangerous operations include blocking synchronization, heap allocation with non-reentrant allocators, unbounded loops, formatted I/O, and functions that use shared mutable state without synchronization. A function's name is not evidence of ISR safety.
+Review allocation, locks, static state, recursion, library calls, and shared objects. C does not define interrupt context, so safety depends on the RTOS, ABI, compiler, interrupt controller, and target.
 
 ### What to reason about
-- Does it block?
-- Does it acquire a lock that task context can hold?
-- Does it allocate/free memory?
-- Does it access shared state atomically?
-- Is execution bounded?
-- Does it touch MMIO with required ordering?
-
-A safe API often has an explicit `_from_isr` variant so the context contract is visible at call sites.
+- Can the function block or wait for an event?
+- Can it acquire a lock held by the interrupted context?
+- Is its static/global state reentrant?
+- Is execution time bounded?
+- Are all memory accesses correctly synchronized?
+- Does it call a non-reentrant library routine?
 
 ## Embedded implications
-RTOS kernels commonly provide specialized ISR APIs that perform a minimal operation and request a context switch after the interrupt returns. Using the ordinary task API can corrupt scheduler state or deadlock.
+Many RTOSes provide dedicated `*_from_isr()` APIs because ordinary queue/semaphore operations may manipulate scheduler state or block. Driver APIs should similarly distinguish ISR and thread variants when their contracts differ.
 
 ### Firmware review angle
-Maintain a call graph of ISR-reachable functions and classify each as ISR-safe, ISR-forbidden, or conditionally safe. Review transitive dependencies after library changes.
+Encode context restrictions in naming, documentation, static-analysis annotations, and API structure. Keep the ISR-safe surface area small and test it independently.
 
 ## Edge cases and failure modes
-- A logging API allocates internally.
-- A mutex is taken from an ISR while its owner is preempted.
-- A “nonblocking” function loops until hardware is ready.
-- A helper invokes a callback that is not ISR-safe.
+- ISR calls a blocking API.
+- Lock is held by the interrupted task.
+- Static scratch buffer is shared by nested interrupts.
+- Library function uses hidden global state.
+- API is fast normally but has an unbounded worst-case path.
 
 ## Example pattern
 ```c
-void adc_IRQHandler(void)
+bool ring_push_from_isr(ring_t *r, uint8_t value)
 {
-    uint16_t sample = ADC_DATA;
-    clear_adc_irq();
-    adc_queue_push_from_isr(sample);
+    /* Target-specific atomic/index protocol required here. */
+    return ring_try_push(r, value);
 }
 ```
-The suffix documents the intended execution context; the implementation must actually honor it.
+The `_from_isr` name is a contract marker, not proof of correctness.
 
 ## Verification / debugging
-Use static call-graph checks, code review annotations, stress tests, and ISR latency measurement. Deliberately trigger the API under interrupt load and queue saturation.
+Inspect the complete call graph, stress nested interrupts, and inject queue-full and error conditions. Measure worst-case cycles and stack usage. Test with the scheduler and interrupt priorities configured as in production.
+
+Staff-level questions: What exactly makes this function ISR-safe? Which resources can it touch? What happens if it is re-entered? Can the target implementation introduce a hidden lock?
 
 ## Staff-level takeaway
-ISR safety is a **transitive property of the call graph**. A function is not safe merely because its own body is short; every reachable operation must satisfy the interrupt-context contract.
+ISR safety is a **transitive contract**. Prove the entire call graph, synchronization model, and timing bound rather than relying on naming conventions or `volatile` variables.
 
 ## Related
 [[00_Chapter_Index]]
