@@ -1,33 +1,39 @@
 # Reading compiler output
 
-> Canonical C topic note — chapter 37.
-
 ## Definition
-Compiler output includes assembly, object files, symbol tables, relocation records, optimization reports, debug information, and linker maps. Reading these artifacts is how an embedded engineer verifies what the toolchain actually produced.
+Reading compiler output means using assembly, optimization reports, intermediate artifacts, symbol tables, section maps, and diagnostics to understand what the toolchain actually generated from C. For Staff-level embedded work, source inspection alone is insufficient when performance, ABI, timing, memory placement, or optimization is under review.
+
+## Scope and boundaries
+Assembly is target-specific; C semantics are not. Never infer ISO C guarantees from one compiler's output. Conversely, when validating a firmware image, generated output is essential evidence because the MCU executes machine code, not the C source.
 
 ## Mechanism and language rules
-At minimum, learn to correlate C source with: function entry/exit, loads/stores, branches, calls, returns, constant materialization, stack offsets, and register use. Then learn ELF/object concepts, sections, symbols, relocations, and linker placement.
+A useful inspection chain is:
 
-A source statement can produce zero, one, or many instructions. Conversely, several source operations can combine into one instruction sequence.
+```text
+C source -> preprocessed source -> compiler diagnostics -> assembly/object -> linker -> ELF/map -> binary
+```
+
+Inspect function prologues/epilogues, loads/stores, branches, calls, register allocation, literal pools, section placement, relocations, and symbol visibility. Optimization remarks can explain why a loop was or was not vectorized or inlined.
 
 ## Embedded implications
-Assembly inspection is essential for MMIO width, barrier instructions, interrupt prologues, calling conventions, stack usage, flash placement, and hot-loop timing. Map files reveal RAM/ROM consumption and unexpected library pulls.
+For a suspicious driver function, confirm that MMIO accesses use the intended width and ordering. For an ISR, inspect entry/exit code and saved registers. For a hot loop, count relevant instructions and memory operations on the real architecture. For startup code, inspect reset entry, data copying, zeroing, stack setup, and constructor/runtime hooks where present.
 
-Useful tools include compiler `-S`, object disassemblers such as `objdump`, symbol tools such as `nm`, and linker map files. Exact options are toolchain-specific.
+The linker map reveals flash/RAM consumption and placement that cannot be understood from one `.c` file.
 
 ## Edge cases and failure modes
-- Reading assembly without knowing the ABI.
-- Confusing addresses in a relocatable object with final linked addresses.
-- Assuming source line order equals instruction order.
-- Ignoring literal pools, veneers, thunks, or linker-generated stubs.
-- Measuring a non-production build.
+- Debugging the wrong binary or stale object file.
+- Inspecting source with different preprocessor configuration than the released build.
+- Counting instructions without considering pipeline, wait states, caches, or flash accelerators.
+- Assuming a visible symbol must correspond to an executed function; LTO and section garbage collection can alter reachability.
+- Assuming assembly from one MCU family applies to another.
 
 ## Verification / debugging
-Pick one critical function and inspect its final linked disassembly. Confirm argument passing, return value, MMIO accesses, stack frame, section placement, and expected barriers. Compare map-file symbols against the memory budget.
+Use the compiler's assembly output, optimization reports, `objdump`/`readelf`/`nm` or target-equivalent tools, and the linker map. Correlate addresses with the ELF and debugger symbols. For performance, use cycle counters or hardware trace to validate the static inspection.
+
+A strong workflow is to formulate a hypothesis first—such as “this load is repeated”—then locate the corresponding instructions and measure whether it matters.
+
+## Performance, memory, timing and power
+Assembly inspection can reveal redundant memory accesses, spills, branches, missed inlining, unexpected library calls, and code-size growth. But static instruction counts are only a model; target measurements determine actual timing and energy.
 
 ## Staff-level takeaway
-A Staff engineer should be able to cross the abstraction boundary from C to ELF to machine code and explain discrepancies using evidence rather than intuition.
-
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+Generated artifacts are engineering evidence. A Staff engineer should be able to move from a high-level requirement to C semantics, compiler decisions, ABI details, linker placement, and finally measured hardware behavior without treating any one layer as the whole system.
