@@ -3,41 +3,100 @@
 > Canonical C topic note — chapter 34.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **setjmp**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+`setjmp()` from `<setjmp.h>` establishes a non-local control-flow recovery point. It saves execution context into a `jmp_buf`; a later `longjmp()` can transfer control back to that point.
+
+The critical rule is that `setjmp()` is not an ordinary function whose return value simply identifies success. It returns once when the context is initially established and appears to return again after `longjmp()`. The standard tightly restricts where the `setjmp()` invocation may appear.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+Typical control flow:
+
+```text
+setjmp(jb)
+   │
+   ├── initial return 0 ──> execute protected region
+   │                         │
+   │                         └── longjmp(jb, value)
+   │                                  │
+   └── resumed return ────────────────┘
+                                      nonzero value
+```
+
+The saved environment represents enough implementation state to resume execution at the `setjmp` point. The exact contents of `jmp_buf` are opaque.
+
+The invocation has strict syntactic restrictions. In portable C, `setjmp()` should be used directly in the controlling expression of an allowed `if`/`switch`, in a relational/equality comparison with an integer constant expression, or as the complete expression statement, as specified by the standard. Wrapping it in an arbitrary function call, assignment, arithmetic expression, or macro-generated expression can violate the rule.
 
 ### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+- `jmp_buf` is an opaque array type supplied by the implementation.
+- The saved context can include control-flow and machine state; do not inspect or copy its representation manually.
+- The context is valid only while the function invocation that established the environment is still active.
+- `setjmp()` does not establish a C exception object, unwind C++ destructors, or automatically restore application resources.
+- Automatic local variables changed after `setjmp()` may have indeterminate values after `longjmp()` unless they have `volatile`-qualified type, subject to the exact standard rule.
+- The call site restriction exists because the implementation may need compiler cooperation to implement the unusual control-flow semantics.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+On an MCU, `setjmp()` may save registers, stack/frame state, status information, and ABI-specific context. That can be expensive in code size and execution time, and `longjmp()` can bypass ordinary cleanup paths.
+
+The mechanism may be useful for narrowly bounded recovery from a parser or transaction-like operation, but it is usually a poor fit for safety-critical firmware because resource ownership and control-flow reasoning become harder.
 
 ### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+Measure:
+- context-save cost;
+- stack consumption;
+- interrupt/exception interactions;
+- compiler optimization behavior;
+- whether the RTOS scheduler state can be crossed safely;
+- whether locks, DMA, peripherals, or power-state transitions are left active.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
+Major hazards:
+- jumping into a function that has already returned;
+- assuming all automatic variables retain their latest values;
+- leaking locks, heap allocations, peripheral ownership, or transactions;
+- crossing an RTOS task boundary;
+- using a `jmp_buf` after its establishing function has returned;
+- placing `setjmp()` in a forbidden expression context;
+- assuming `longjmp()` performs structured cleanup.
 
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
+A particularly dangerous pattern is using `longjmp()` as a universal error return mechanism across many stack frames. The resulting control-flow graph becomes non-local and resource ownership becomes difficult to prove.
 
 ## Example pattern
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
+#include <setjmp.h>
+
+static jmp_buf recovery;
+
+static void risky_operation(void)
 {
-    return x;
+    /* On a detected recoverable condition: */
+    longjmp(recovery, 1);
+}
+
+int run(void)
+{
+    int status = setjmp(recovery);
+    if (status == 0) {
+        risky_operation();
+        return 0;
+    }
+
+    /* Recovery path. */
+    return -1;
 }
 ```
 
+The `jmp_buf` is deliberately owned by the active `run()` invocation.
+
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Compile with high warning levels and test at multiple optimization levels. Inspect the generated assembly when ABI behavior matters. Test every path for resource cleanup and use static analysis to identify non-local exits.
+
+Staff-level questions:
+- What resources are live when `longjmp()` occurs?
+- Can every resource be safely abandoned or restored?
+- Does the target ABI/RTOS permit this context transfer?
+- Would explicit error propagation make the control flow easier to verify?
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+`setjmp()` is a compiler-supported non-local control-flow primitive with real lifetime and optimization consequences. Use it only inside a tightly bounded recovery design where every bypassed cleanup and context boundary has been explicitly analyzed.
 
 ## Related
 [[00_Chapter_Index]]
