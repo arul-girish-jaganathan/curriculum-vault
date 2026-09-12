@@ -3,41 +3,41 @@
 > Canonical C topic note — chapter 37.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Constant propagation**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+Constant propagation substitutes a value known to be constant for a variable or expression and then enables further simplification. It is an optimizer transformation, not a promise that every `const` object becomes a compile-time constant.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+The compiler builds value information from initializers, control flow, interprocedural facts, and target assumptions. Related transformations include constant folding, copy propagation, range analysis, and conditional simplification.
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
-
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
-
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
-
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
+static int limit(void)
 {
-    return x;
+    const int n = 16;
+    return n * 2;
 }
 ```
 
+The compiler may produce the constant `32`. A `const` object can still have an address and storage, so the C qualifier alone does not establish that it is an integer constant expression. `static const` data may be placed in read-only storage by the implementation, but that is not the same as C language `const` guaranteeing physical ROM.
+
+A value may become constant only along one control-flow path. Optimizers track these facts and invalidate them when assignments or possible aliases make the value uncertain.
+
+## Embedded implications
+Propagation can remove loads, branches, table lookups, and arithmetic, reducing cycles, flash, and power. It can also specialize drivers for compile-time board configuration. Conversely, hidden aliasing or undefined behavior can cause the compiler to infer a constant that conflicts with hardware reality.
+
+For MMIO or asynchronously changing state, accesses that must occur must be represented with the appropriate volatile/atomic/concurrency contract. Do not create a normal local mirror and expect the compiler to observe hardware changes.
+
+## Edge cases and failure modes
+- Confusing `const` with compile-time constant.
+- Taking the address of an object and assuming storage must remain observable.
+- Reading a hardware-updated register through an ordinary object.
+- Relying on a debugger showing a variable that optimization eliminated.
+- Assuming a value is constant across an aliasing boundary without proving it.
+- Ignoring integer overflow rules when reasoning about folded expressions.
+
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Use compiler optimization reports, intermediate-representation dumps where available, and disassembly. Check whether a supposedly runtime value disappeared. When behavior is wrong only under optimization, investigate aliasing, lifetime, data races, volatile qualification, and undefined behavior before disabling optimization.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+Constant propagation is a consequence of trustworthy contracts. Keep configuration immutable, make hardware and concurrency boundaries explicit, and verify generated code when the distinction between a load and a constant has system-level consequences.
 
 ## Related
 [[00_Chapter_Index]]
