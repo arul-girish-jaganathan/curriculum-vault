@@ -1,43 +1,49 @@
 # Reentrancy
 
-> Canonical C topic note — chapter 44.
+> Canonical C topic note — Chapter 44. A function is reentrant when concurrent or nested invocations can execute safely without corrupting shared state or depending on a single invocation's mutable context.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Reentrancy**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+A function that uses only local state or properly synchronized shared state is easier to make reentrant. Static mutable variables, global buffers, non-reentrant library state, and unsynchronized device access commonly break reentrancy.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+An ISR can interrupt a task while the task is inside the same function. If the ISR invokes that function again, two invocations overlap. The C language does not automatically protect shared objects; the implementation must establish a valid concurrency model.
 
 ### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+- What mutable state exists between calls?
+- Is it static/global or caller-owned?
+- Can a callback re-enter the function?
+- Are shared accesses atomic and properly ordered?
+- Does the function depend on a single hardware transaction in progress?
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+A non-reentrant logger, allocator, protocol parser, or driver can fail when called from both task and ISR contexts. Even if the data race is rare, interrupt timing can expose it.
 
 ### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+Prefer context-specific APIs, caller-provided state, or serialized ownership. Avoid hidden global state where practical. Document functions as ISR-safe/reentrant/non-reentrant explicitly.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
+- Static temporary buffer overwritten by nested call.
+- Function-level state changed by an ISR during a task operation.
+- Callback re-enters an API while its internal state is inconsistent.
+- A lock intended for task context is unusable in an ISR.
 
 ## Example pattern
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
+static int parse_state;
+
+int parse_byte(uint8_t b)
 {
-    return x;
+    parse_state = update_state(parse_state, b);
+    return parse_state;
 }
 ```
+This function is not inherently reentrant because invocations share `parse_state`. Passing parser state through a caller-owned object is usually clearer.
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Search for static/global mutable state in ISR-reachable call graphs. Stress nested invocation and callback re-entry. Use race detectors on host equivalents and target instrumentation for timing-sensitive cases.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+Reentrancy is a **state ownership property**. Make mutable state explicit, serialize where necessary, and never assume that a function safe in task context remains safe when an interrupt can interrupt and re-enter it.
 
 ## Related
 [[00_Chapter_Index]]
