@@ -1,44 +1,52 @@
 # Producer-consumer ownership
 
-> Canonical C topic note — Chapter 45. Producer-consumer ownership defines when one agent may write a buffer and when another may read or reuse it.
+> Canonical C topic note — Chapter 45. Producer-consumer ownership defines when a producer may write a buffer and when a consumer may read or reuse it. DMA makes the producer/consumer relationship extend across software and hardware.
 
 ## Definition
-A producer creates or fills data; a consumer reads/processes it. With DMA, either side can be hardware. Correctness requires explicit transfer points and synchronization.
+A producer creates or fills data; a consumer processes it. Ownership transfer is the synchronization point that prevents simultaneous conflicting access. In DMA systems, the device can be either producer or consumer.
 
 ## Mechanism and language rules
-Publishing data requires ordering the data writes before the ownership/index update. Consuming requires observing the ownership update before reading the data. C atomics can provide ordering between software threads/agents, but hardware DMA may require platform-specific barriers and cache maintenance.
+The protocol must establish both **ownership** and **visibility**. An atomic index or flag can establish synchronization, but associated payload must also become visible before the consumer acts on the ownership signal.
 
 ### What to reason about
-- What is the publication event?
-- Which agent writes the ownership state?
-- Is ownership state atomic?
-- Are data accesses ordered relative to ownership?
-- Can the consumer modify storage before the producer releases it?
+- Who owns the storage at each state?
+- Which event transfers ownership?
+- What ordering publishes payload before metadata?
+- Can ownership be transferred twice?
+- What happens if the consumer is delayed?
+- Can the producer overrun available storage?
 
 ## Embedded implications
-Typical pipelines are ISR/DMA -> queue -> task or CPU -> DMA -> peripheral. Double/triple buffering can maintain throughput while one buffer is processed and another is transferred.
+Typical states are FREE -> PRODUCER -> READY -> CONSUMER -> FREE. DMA may replace one software actor in this state machine. Buffer depth must cover worst-case producer bursts and consumer stalls.
 
 ### Firmware review angle
-Calculate buffer capacity from worst-case service latency and producer rate. Define behavior when the consumer falls behind: drop, backpressure, overwrite, or fault.
+Make state transitions explicit and define overflow, timeout, and reset behavior. Avoid hidden ownership through raw pointers passed between modules.
 
 ## Edge cases and failure modes
-- Ownership flag observed before payload is visible.
-- Buffer reused before hardware completion.
-- Producer and consumer both mutate shared metadata.
-- Queue overflow silently loses data.
+- Consumer sees metadata before payload.
+- Producer reuses a buffer still owned by consumer.
+- Queue full condition is ignored.
+- DMA completes after software has reclaimed the buffer.
+- Reset leaves a device-owned buffer marked free.
 
 ## Example pattern
 ```c
-/* Conceptual state machine: FREE -> PRODUCING -> READY -> CONSUMING -> FREE */
-typedef enum { FREE, PRODUCING, READY, CONSUMING } buffer_state_t;
+typedef enum {
+    BUF_FREE,
+    BUF_PRODUCER,
+    BUF_READY,
+    BUF_CONSUMER
+} state_t;
 ```
-The transitions, not the enum itself, establish correctness.
+The transitions must be synchronized according to the execution model.
 
 ## Verification / debugging
-Instrument state transitions and assert that only legal transitions occur. Stress maximum rates, delayed consumers, errors, reset, and concurrent completion.
+Stress producer bursts, consumer stalls, wraparound, timeouts, and reset. Track buffer IDs and state transitions. For DMA, capture descriptor ownership and cache synchronization alongside software state.
+
+Staff-level questions: What is the ownership invariant? What proves the release event? Can the consumer observe a partially written payload? What is the maximum backlog?
 
 ## Staff-level takeaway
-Producer-consumer correctness is a **protocol of ownership plus visibility**. Model the states explicitly and prove that no agent accesses a buffer outside its ownership interval.
+Producer-consumer correctness is **ownership plus visibility**. Define legal states and transitions, then prove the ordering and capacity assumptions that make them safe.
 
 ## Related
 [[00_Chapter_Index]]
