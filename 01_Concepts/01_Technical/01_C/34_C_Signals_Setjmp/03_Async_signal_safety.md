@@ -3,41 +3,86 @@
 > Canonical C topic note — chapter 34.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Async-signal-safety**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+**Async-signal-safety** is the requirement that code executing in a signal handler remain valid when it interrupts an arbitrary point in normal execution. A function that is safe for ordinary calls is not automatically safe when called asynchronously.
+
+ISO C defines a restricted signal-handler environment. POSIX adds a substantially larger, explicitly documented async-signal-safe function set. These must not be conflated.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+The central hazard is interruption of shared execution state. Suppose normal code is halfway through updating a library object, owns a lock, or has temporarily changed global invariants. A signal handler executes at that point. If the handler invokes the same subsystem, it can observe inconsistent state or wait forever.
+
+For portable C, handler code should be limited to operations for which the C standard gives the required signal guarantees, with communication normally performed through an appropriately declared `volatile sig_atomic_t` object or another implementation-specific mechanism with documented guarantees.
 
 ### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+- `volatile` prevents certain compiler optimizations of accesses but is not a general atomicity or memory-ordering primitive.
+- `sig_atomic_t` identifies an integer type whose accesses have the required atomicity property for signal-handler communication under the C signal model.
+- A library function must not be assumed safe merely because it is reentrant in ordinary multithreaded code.
+- Allocators, stdio, locks, locale state, and other stateful subsystems are common danger areas.
+- `errno`, thread-local state, and signal masks are platform-specific concerns unless the implementation documents stronger guarantees.
+
+The important distinction is **reentrancy versus asynchronous signal safety**. A function can be reentrant yet still depend on resources or operations that are unsuitable for asynchronous interruption.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+On embedded systems, the closest architectural analogue is ISR-safe code. The same principle applies: the asynchronous context should do minimal bounded work and communicate an event to normal execution.
+
+However, an ISR and a C signal handler are not interchangeable. ISR safety depends on CPU exception rules, interrupt controller behavior, RTOS critical sections, memory ordering, and vendor APIs. Signal safety depends on the C runtime's signal model.
 
 ### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+Build a context matrix for every callable API:
+
+| API | Thread/task | ISR | Signal handler | Fault handler |
+|---|---|---|---|---|
+| bounded register write | usually | target-dependent | implementation-dependent | target-dependent |
+| allocator | usually | no | no assumption | generally no |
+| stdio/logger | usually | generally no | no assumption | generally no |
+| flag/event store | yes | if designed | if permitted | target-dependent |
+
+Require the owner of each subsystem to document its context restrictions.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
+Typical failures:
+- deadlock because the handler interrupts code holding a lock;
+- allocator corruption because allocation was interrupted and re-entered;
+- recursive logging because the logger itself triggered the signal;
+- partially updated state observed by the handler;
+- stack exhaustion from unexpectedly deep handler paths;
+- hidden calls to unsafe functions through wrappers.
 
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
+A wrapper such as `fatal_log()` is not automatically safe just because its body appears small. Review its complete call graph, including formatting, allocation, locks, drivers, and output backends.
 
 ## Example pattern
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
+#include <signal.h>
+
+static volatile sig_atomic_t shutdown_requested;
+
+static void on_signal(int signo)
 {
-    return x;
+    (void)signo;
+    shutdown_requested = 1;
+}
+
+static void service(void)
+{
+    if (shutdown_requested) {
+        /* Perform complex cleanup here, outside the handler. */
+    }
 }
 ```
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Create a host test that repeatedly injects signals while executing library operations. Run with sanitizers where supported, then inspect deadlocks, corrupted state, and missed events.
+
+For firmware-like environments, review call graphs and mark APIs with context annotations such as `TASK_ONLY`, `ISR_SAFE`, or `SIGNAL_SAFE`. Static analysis can then reject accidental crossings.
+
+Staff-level questions:
+- Is the safety claim based on ISO C, POSIX, or vendor documentation?
+- Is every transitive function call safe?
+- What shared state can be interrupted?
+- What is the bounded worst-case handler time?
+- What happens if the event arrives again before the first one is processed?
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+Async-signal-safety is fundamentally about **interruption of invariants**. The robust pattern is to make the asynchronous path tiny, bounded, and explicit, and defer complex work to a context designed to perform it safely.
 
 ## Related
 [[00_Chapter_Index]]
