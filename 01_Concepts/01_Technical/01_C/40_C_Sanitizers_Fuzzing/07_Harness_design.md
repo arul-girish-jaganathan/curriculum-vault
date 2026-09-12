@@ -1,38 +1,41 @@
 # Harness design
 
-> Canonical C topic note — chapter 40.
-
 ## Definition
-A fuzz or sanitizer harness is a small adapter that converts raw test input into a controlled call to the code under test and defines what constitutes failure.
+A **fuzzing harness** is the controlled adapter that turns arbitrary input bytes into an invocation of the code under test. Good harness design determines whether a fuzzer explores meaningful behavior or merely exercises initialization and input rejection.
+
+## Scope and boundaries
+The harness should be small, deterministic, resettable, and faithful to the real API contract. It should not “fix” malformed input before the target parser sees it, because that can remove the very cases fuzzing is intended to explore.
 
 ## Mechanism and language rules
-A strong harness initializes required state, bounds input, avoids global nondeterminism, calls one meaningful entry point, and releases resources. It should be cheap enough for millions of executions.
+A conceptual harness is:
 
 ```c
 int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 {
-    parser_feed(data, size);
+    parser_reset();
+    parser_consume(data, size);
     return 0;
 }
 ```
 
-The exact API is framework-specific; the engineering principles are general.
+The exact fuzzing API is tool-specific, but the principles are general: bounded input, clean state, deterministic behavior, and no dependence on persistent process state unless that state is intentionally part of the test model.
 
 ## Embedded implications
-Wrap protocol and algorithm modules around fake clocks, deterministic storage, bounded allocators, and simulated peripherals. Avoid bringing the entire RTOS/driver stack into every fuzz execution.
+For firmware modules, isolate hardware behind interfaces. A parser harness can replace UART, flash, clock, allocator, or transport dependencies with deterministic fakes. For stateful protocols, define how a fuzz iteration begins and ends and whether a sequence of messages is itself the fuzz input.
 
 ## Edge cases and failure modes
-- Harness bugs mistaken for product bugs.
-- Global state leaking between iterations.
-- Unbounded allocations or recursion.
-- Failure oracles that detect only crashes and miss invalid state.
+- State from one iteration contaminates the next.
+- Harness leaks memory or file descriptors.
+- Randomness makes crashes difficult to reproduce.
+- Input is copied into a fixed buffer without checking size.
+- Expensive initialization dominates execution.
+- Assertions or logging terminate exploration prematurely without preserving the input.
 
 ## Verification / debugging
-Unit-test the harness itself, enforce time/input limits, reset state between cases, and add assertions for invariants. Run with sanitizers and deterministic seeds when reproducing failures.
+First write ordinary unit tests for valid and invalid cases, then fuzz the same harness. Ensure every discovered failure can be rerun from the saved input. Add assertions about parser invariants and use ASan/UBSan for memory/arithmetic defects.
+
+## Performance, memory, timing and power
+A harness should minimize per-input overhead. Avoid heap churn when possible and reuse deterministic state carefully. Fast reset strategies can improve fuzz throughput dramatically, but they must not hide lifecycle bugs.
 
 ## Staff-level takeaway
-The harness is part of the test architecture. Its fidelity, determinism, and failure oracle determine what the fuzzer can actually prove.
-
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+The harness is the **experimental boundary**. Its quality determines what behavior is actually being tested; treat its assumptions and reset model as production-level test infrastructure.
