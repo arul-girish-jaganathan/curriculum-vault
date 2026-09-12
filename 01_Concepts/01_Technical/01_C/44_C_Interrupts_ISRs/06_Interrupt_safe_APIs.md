@@ -1,43 +1,51 @@
 # Interrupt-safe APIs
 
-> Canonical C topic note — chapter 44.
+> Canonical C topic note — Chapter 44. An interrupt-safe API has a documented execution-context contract and avoids operations that are unsafe, blocking, non-reentrant, or unbounded in ISR context.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Interrupt-safe APIs**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+An API is ISR-safe only when its implementation and all callees satisfy the required interrupt constraints. ISO C has no concept of ISR-safe functions.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+Dangerous operations include blocking synchronization, heap allocation with non-reentrant allocators, unbounded loops, formatted I/O, and functions that use shared mutable state without synchronization. A function's name is not evidence of ISR safety.
 
 ### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+- Does it block?
+- Does it acquire a lock that task context can hold?
+- Does it allocate/free memory?
+- Does it access shared state atomically?
+- Is execution bounded?
+- Does it touch MMIO with required ordering?
+
+A safe API often has an explicit `_from_isr` variant so the context contract is visible at call sites.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+RTOS kernels commonly provide specialized ISR APIs that perform a minimal operation and request a context switch after the interrupt returns. Using the ordinary task API can corrupt scheduler state or deadlock.
 
 ### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+Maintain a call graph of ISR-reachable functions and classify each as ISR-safe, ISR-forbidden, or conditionally safe. Review transitive dependencies after library changes.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
+- A logging API allocates internally.
+- A mutex is taken from an ISR while its owner is preempted.
+- A “nonblocking” function loops until hardware is ready.
+- A helper invokes a callback that is not ISR-safe.
 
 ## Example pattern
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
+void adc_IRQHandler(void)
 {
-    return x;
+    uint16_t sample = ADC_DATA;
+    clear_adc_irq();
+    adc_queue_push_from_isr(sample);
 }
 ```
+The suffix documents the intended execution context; the implementation must actually honor it.
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Use static call-graph checks, code review annotations, stress tests, and ISR latency measurement. Deliberately trigger the API under interrupt load and queue saturation.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+ISR safety is a **transitive property of the call graph**. A function is not safe merely because its own body is short; every reachable operation must satisfy the interrupt-context contract.
 
 ## Related
 [[00_Chapter_Index]]
