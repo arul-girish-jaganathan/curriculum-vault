@@ -1,28 +1,38 @@
 # Integer sanitization
 
-> Canonical C topic note — chapter 40.
-
 ## Definition
-Integer sanitization detects selected arithmetic and conversion hazards such as signed overflow, invalid shifts, and some implicit conversion problems, depending on compiler configuration.
+**Integer sanitization** instruments integer operations and conversions to detect selected arithmetic errors at runtime, such as signed overflow, invalid shifts, or suspicious unsigned behavior depending on the compiler's sanitizer options. It targets one of the most common sources of C security and reliability defects.
+
+## Scope and boundaries
+C has defined, implementation-defined, and undefined integer behaviors. Sanitizers cover only selected operations and exercised paths. Unsigned arithmetic intentionally wraps modulo its range, so not every wrap is an error.
 
 ## Mechanism and language rules
-Sanitizers instrument operations that have defined preconditions. For example, signed overflow is undefined in C, while unsigned arithmetic wraps modulo the width of the unsigned type. Correct diagnosis requires knowing the actual operand types after integer promotions and conversions.
+A sanitizer can turn an operation such as:
+
+```c
+int n = INT_MAX;
+int x = n + 1; /* signed overflow: undefined behavior */
+```
+
+into a runtime diagnostic under the relevant instrumentation. Shift counts, signedness, and conversion checks require separate analysis because their C rules differ.
 
 ## Embedded implications
-Integer defects commonly occur at packet lengths, register fields, counters, timeouts, array indices, and size calculations. Host sanitizer tests should exercise maximum, minimum, zero, and boundary-crossing values.
+Integer defects are common in packet lengths, buffer indexing, timer arithmetic, register fields, ADC scaling, fixed-point calculations, and size conversions. Host sanitizer builds can exercise these paths cheaply before target execution.
+
+The target's integer widths and compiler options must be represented in tests. A 64-bit host may hide a defect that appears with 32-bit `size_t` or another target data model.
 
 ## Edge cases and failure modes
-- Assuming unsigned wrap is automatically safe.
-- Sanitizing after a narrowing conversion instead of validating the range before conversion.
-- Missing integer-promotion effects.
-- Using sanitizer behavior as the production arithmetic policy.
+- Assuming unsigned wrap is automatically undefined.
+- Checking `a + b` after the overflow already occurred instead of before it.
+- Converting a large unsigned value to signed and assuming truncation is harmless.
+- Shift count equals or exceeds the width.
+- Host and target integer widths differ.
 
 ## Verification / debugging
-Test boundary matrices and run sanitizer-enabled builds. Add explicit checked arithmetic at security/safety boundaries where overflow is part of the expected input model.
+Test around `0`, minimum, maximum, and one-past-boundary values. Run sanitizer-enabled unit and fuzz tests. Pair dynamic checks with static range analysis and explicit checked-arithmetic helpers where values cross trust boundaries.
+
+## Performance, memory, timing and power
+Instrumentation adds checks and can significantly slow execution or increase image size. Use it in validation builds rather than production unless the target explicitly supports the required overhead and policy.
 
 ## Staff-level takeaway
-Sanitizers identify suspicious arithmetic; robust APIs define what ranges are legal and how overflow is handled. The latter is the product contract.
-
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+Integer sanitization is most valuable when connected to **range contracts**. Define valid ranges at API boundaries, validate before arithmetic, and use sanitizer evidence to find paths where those contracts are violated.
