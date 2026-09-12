@@ -3,41 +3,30 @@
 > Canonical C topic note — chapter 37.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Debug vs optimized builds**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+Debug and optimized builds differ in optimization, debug information, assertions, instrumentation, libraries, and sometimes compiler-defined configuration. A debugger view of source is therefore not a faithful execution trace of optimized machine code.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+At `-O0`, variables are more likely to have simple stack/register representations and source statements often map more directly to instructions. At higher optimization, variables can be folded, merged, moved, eliminated, or represented only transiently. Instruction scheduling and inlining can make stepping appear to jump or execute lines out of order.
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+This does not change defined C semantics; it changes the implementation used to realize them.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+Never validate firmware correctness only in a debug build. Optimization can expose UB, races, missing volatile qualification, stack assumptions, and timing-sensitive bugs. Conversely, debug instrumentation can hide races or alter timing enough to mask failures.
 
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+Production-like builds should use the release compiler, linker script, LTO settings, libraries, startup code, and memory map. Keep enough debug symbols or post-build symbol artifacts to debug the actual image.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
-```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
-```
+- “It works at `-O0`” treated as proof of correctness.
+- Debug assertions or logging changing timing.
+- Different linker garbage collection changing retained code.
+- Stack overflow appearing only in optimized or inlined code.
+- Debugger memory reads accidentally interacting with hardware registers.
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Reproduce with the exact failing optimization settings. Save ELF/map/disassembly artifacts for the binary. Use sanitizers and static analysis on host builds, then validate target behavior under the production configuration. Compare stack usage, image size, ISR latency, and watchdog margins.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+Maintain separate debugability and correctness strategies. The strongest workflow makes release builds observable enough to diagnose while ensuring that debug builds are never the only evidence of system correctness.
 
 ## Related
 [[00_Chapter_Index]]
