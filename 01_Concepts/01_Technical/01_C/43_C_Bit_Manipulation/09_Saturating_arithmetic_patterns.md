@@ -1,35 +1,37 @@
 # Saturating arithmetic patterns
 
-> Canonical C topic note — Chapter 43. Saturating arithmetic clamps a result to a representable minimum or maximum instead of wrapping or invoking signed-overflow undefined behavior.
+> Canonical C topic note — Chapter 43. Saturating arithmetic clamps a result to a defined numeric limit instead of wrapping or invoking signed-overflow undefined behavior.
 
 ## Definition
-For unsigned values, ordinary C arithmetic wraps modulo the type's range. For signed values, overflow is undefined behavior. Saturation intentionally detects the boundary before performing an overflowing operation and returns the limit instead.
+For unsigned addition, normal C arithmetic wraps modulo the type range. For signed arithmetic, overflow is undefined behavior. Saturation detects the boundary before the overflowing operation and returns the chosen limit.
 
 ## Mechanism and language rules
-For unsigned addition, overflow can be detected with `a > UINT_MAX - b`. For unsigned subtraction, underflow can be detected with `a < b`. For signed arithmetic, perform a range check in a wider type when one is guaranteed to represent the mathematical result, or use a carefully proven comparison before the operation.
+For unsigned addition, test `a > MAX - b`; for subtraction, test `a < b`. For signed values, prove the mathematical operation is representable before evaluating it, often by using a wider type where the implementation guarantees sufficient range.
 
 ### What to reason about
-- What is the exact numeric range?
-- Can the intermediate expression overflow before the check?
-- Are operands promoted to a wider type?
-- Is wraparound actually desired?
-- Is the operation required to be constant-time?
+- Is the limit the C type limit or an application limit?
+- Can an intermediate expression overflow before the check?
+- What promotions occur?
+- Is wraparound actually the intended algorithm?
+- Does the implementation need constant-time behavior?
+
+Never write `if (a + b > MAX)` as an overflow test for a type where `a + b` can already overflow.
 
 ## Embedded implications
-Saturation is common in audio, control, sensor scaling, fixed-point arithmetic, and safety limits. It prevents wraparound from turning a large positive command into a negative or small value.
+Saturation is common in control, audio, sensor scaling, fixed-point arithmetic, and safety limits. It prevents wraparound from turning a high command into a low or negative value.
 
 ### Firmware review angle
-Saturation policy should be part of the algorithm contract. On DSP-capable MCUs, native saturating instructions may outperform portable C, but compiler intrinsics should be isolated behind a target abstraction when portability matters.
+Define saturation mathematically and test boundary behavior. Native saturating instructions may improve performance on DSP-capable targets, but isolate compiler intrinsics behind an abstraction when portability matters.
 
 ## Edge cases and failure modes
-- Checking `a + b > MAX` is already too late if `a + b` overflows.
-- Signed overflow is not a valid way to detect overflow.
-- Saturating at an application limit differs from saturating at the C type limit.
-- Conversions after a saturated calculation can still truncate.
+- Overflow occurs before the check.
+- Signed overflow is used as an implicit detection mechanism.
+- Application limit differs from machine limit.
+- A later conversion truncates a correctly saturated result.
+- Saturation hides an upstream invalid-input bug when rejection was required.
 
 ## Example pattern
 ```c
-#include <stdint.h>
 #include <stdint.h>
 
 uint32_t sat_add_u32(uint32_t a, uint32_t b)
@@ -40,13 +42,15 @@ uint32_t sat_add_u32(uint32_t a, uint32_t b)
     return a + b;
 }
 ```
-The subtraction in the comparison is safe for unsigned arithmetic.
+The comparison is safe because unsigned subtraction is defined modulo the type range.
 
 ## Verification / debugging
-Test zero, maximum, one below maximum, exact overflow boundary, and large operands. Use property tests to verify commutativity where expected and that the result never leaves the defined range.
+Test zero, maximum, maximum-minus-one, exact boundary, and overflowing operands. Use property tests to prove the result never exceeds the permitted range and compare optimized output with a reference implementation.
+
+Staff-level questions: Is saturation part of the algorithm contract? Should out-of-range input be rejected instead? Does the target provide a measured performance advantage?
 
 ## Staff-level takeaway
-Saturation is fundamentally an **overflow-avoidance design**, not a post-processing clamp. Prove the intermediate arithmetic is defined, then evaluate whether target-specific instructions are justified by measured performance requirements.
+Saturation is an **overflow-avoidance design**, not a post-overflow clamp. Prove every intermediate operation is defined before considering performance optimizations.
 
 ## Related
 [[00_Chapter_Index]]
