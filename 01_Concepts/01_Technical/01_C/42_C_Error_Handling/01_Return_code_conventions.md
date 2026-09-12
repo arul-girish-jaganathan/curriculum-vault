@@ -1,43 +1,59 @@
 # Return-code conventions
 
-> Canonical C topic note — chapter 42.
+> Canonical C topic note — Chapter 42. Return codes are one of the most portable C error-reporting mechanisms: a function returns a value representing success or failure, while detailed semantics are defined by the API contract.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Return-code conventions**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+A return-code convention defines how a function communicates success, failure, partial success, and sometimes retry or state conditions. ISO C does not prescribe one universal convention. Common designs use `0` for success, nonzero error codes, negative errors, enumerations, or domain-specific status types.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+The return type must have enough representational capacity for every documented outcome. Callers must test the return value before using outputs whose validity depends on success. A good contract distinguishes programmer misuse from environmental/runtime failure and states whether output objects are modified on failure.
 
 ### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+- Is zero success or failure?
+- Can multiple error domains collide?
+- Is the returned value signed/unsigned and are conversions safe?
+- Is partial progress represented?
+- Are outputs valid after failure?
+- Does the API require retry, cleanup, or reset?
+
+Prefer named enums or status types over magic numbers. If ABI compatibility matters, explicitly control the underlying representation through the supported interface rather than assuming enum size.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+Return codes are deterministic, allocation-free, and suitable for firmware APIs. They avoid global error state and make failure propagation explicit. However, deeply nested error checks can become verbose, so common cleanup patterns should be standardized.
 
 ### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+Status codes should be stable across bootloader/application boundaries and diagnostic tooling. Reserve ranges for subsystem ownership and document whether codes are persistent protocol values or private implementation details.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
+- Ignored return values cause silent failure.
+- `-1` can be ambiguous across APIs.
+- Unsigned conversion can turn a negative error into a large positive value.
+- Reusing an enum value for a new meaning breaks diagnostics.
+- Returning success before hardware completion creates a false contract.
 
 ## Example pattern
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
+typedef enum {
+    STATUS_OK = 0,
+    STATUS_INVALID_ARG,
+    STATUS_TIMEOUT,
+    STATUS_IO,
+} status_t;
+
+status_t sensor_read(uint16_t *value);
 ```
+The contract should additionally state whether `*value` is modified on every failure class.
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Unit-test every documented status, invalid input, timeout, and partial-progress case. Enable compiler warnings for ignored results where supported or use a project-specific `WARN_UNUSED_RESULT` attribute. Trace status propagation at subsystem boundaries.
+
+Staff-level questions:
+- Can every caller distinguish recoverable from fatal failure?
+- Is the status stable enough for telemetry and ABI boundaries?
+- Are outputs and ownership rules explicit on failure?
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+A return code is valuable only when its **semantic contract is unambiguous**. Design status spaces deliberately, preserve information through propagation, and make ignored or misinterpreted errors difficult to introduce.
 
 ## Related
 [[00_Chapter_Index]]
