@@ -1,63 +1,58 @@
 # Debugging production firmware
 
-> Canonical C topic note — Chapter 41. Production debugging must preserve safety, security, timing, privacy, and field reproducibility while collecting enough evidence to explain failures that cannot be reproduced interactively.
+> Canonical C topic note — chapter 41.
 
 ## Definition
-Production-firmware debugging diagnoses software running in its real deployment configuration: optimized code, real workloads, watchdogs, thermal and power variation, security restrictions, customer data, and limited or no debugger access. The C language semantics do not change, but the observability strategy must be designed into the product.
+Production-firmware debugging means diagnosing failures on released or release-like devices where a live debugger, writable test environment, and unrestricted logging may be unavailable. The design goal is actionable evidence without compromising safety, security, timing, or field reliability.
 
 ## Mechanism and language rules
-Useful mechanisms include structured event logs, counters, trace IDs, persistent crash records, watchdog breadcrumbs, invariant checks, sampled telemetry, and controlled diagnostic builds. Evidence should distinguish raw observations from interpretation and should identify the exact firmware build.
+Production observability should capture implementation state while respecting C semantics and target constraints. Useful mechanisms include persistent crash records, structured event logs, counters, assertions, watchdog breadcrumbs, trace buffers, fault handlers, health metrics, and controlled diagnostic commands.
 
-### What to reason about
-- Which image, configuration, bootloader, and hardware revision ran?
-- What evidence can be collected without exposing secrets or personal data?
-- What CPU, RAM, flash, bandwidth, and latency budget does instrumentation consume?
-- Could a diagnostic read/write alter MMIO or timing?
-- What evidence separates UB, race, memory corruption, hardware fault, and external disturbance?
-- How are records versioned and decoded after future firmware upgrades?
-
-Use compact binary event records in constrained systems and avoid depending on formatted I/O inside fault handlers.
+Every record should be associated with an immutable build identity. Source revision alone may be insufficient if compiler, linker, flags, generated configuration, or link inputs differ.
 
 ## Embedded implications
-Diagnostics consume resources and can themselves create faults. Persistent flash logging requires wear management and power-failure tolerance. Watchdog breadcrumbs can survive software resets but not necessarily power loss. Networked devices add transport security and privacy requirements.
+Design for:
+- bounded RAM use;
+- bounded CPU overhead;
+- bounded flash writes and wear;
+- ISR-safe data collection;
+- recovery after faults;
+- privacy/security of diagnostic data;
+- power-loss tolerance.
 
-### Firmware review angle
-Define diagnostic levels with explicit resource budgets. Every telemetry field should have an owner, schema/version, expected rate, retention policy, and privacy classification. Protect production debug interfaces with the product's security model.
+A RAM ring buffer can retain the last N events with minimal overhead. On a fatal fault, copy only essential state to persistent storage. On next boot, validate and upload/decode the record, then clear or retire it safely.
+
+### Example event
+```c
+struct event {
+    uint32_t id;
+    uint32_t timestamp;
+    uint32_t arg0;
+    uint32_t arg1;
+};
+```
+Use stable event IDs and documented argument meanings instead of human-readable strings in constrained paths.
 
 ## Edge cases and failure modes
-- **Heisenbug:** logging changes timing and hides the race.
-- **Log storm:** a failure loop exhausts storage or bandwidth.
-- **Secret leakage:** dumps expose credentials or customer data.
-- **Version mismatch:** field evidence cannot be symbolized.
-- **Recovery loop:** automatic recovery resets before evidence is extracted.
-- **Diagnostic deadlock:** fault handling depends on a lock or subsystem that is already broken.
-
-## Example pattern
-```c
-static volatile uint32_t last_event;
-
-static void record_event(uint32_t id)
-{
-    last_event = id;
-}
-
-void service(void)
-{
-    record_event(0x1201U);
-    /* bounded operation */
-    record_event(0x1202U);
-}
-```
-The example only illustrates a breadcrumb. A real implementation needs defined concurrency, persistence, atomicity, and integrity rules.
+- Logging changes timing and can hide races.
+- Flash writes during a fault can fail or consume significant time.
+- Fault handlers can recursively fault.
+- Sensitive memory must not be dumped indiscriminately.
+- Firmware updates can make old crash formats difficult to decode.
+- Clock reset/wrap and low-power transitions complicate event ordering.
+- Watchdog resets may provide only partial context.
 
 ## Verification / debugging
-Inject controlled faults in staging and verify capture, persistence, extraction, symbolization, privacy filtering, and recovery. Measure worst-case diagnostic overhead under interrupt and CPU load. Test full storage, malformed records, repeated crashes, power interruption, and firmware upgrades.
+Inject representative faults in a controlled build and verify that the production diagnostics identify them. Test power loss during persistence, repeated crashes, corrupted records, version mismatch, full storage, and watchdog recovery.
 
-Staff-level questions: What minimum evidence makes an incident actionable? What is the worst-case cost? Can another engineer decode it months later? What prevents the diagnostic path from becoming a new failure mode?
+Maintain a symbolization pipeline that accepts build ID + PC and returns the exact source/disassembly location. Keep released ELF/debug artifacts securely archived. Correlate field signatures with firmware version, hardware revision, configuration, and environmental conditions.
 
 ## Staff-level takeaway
-Production debugging is a **system-design problem**. Build observability into the firmware architecture, keep evidence compact and versioned, preserve security and timing boundaries, and make field failures diagnosable without an interactive debugger.
+Production debugging is an architecture concern. Decide before release what evidence survives a crash, how it is versioned, how it is protected, how it is decoded, and how much overhead it costs. A product that cannot explain its own failures shifts debugging cost from milliseconds of instrumentation to weeks of field investigation.
 
 ## Related
 [[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+[[08_Core_dumps]]
+[[09_Post_mortem_analysis]]
+[[11_Debugger_scripting]]
+[[../84_C_Fault_Containment/00_Chapter_Index]]
