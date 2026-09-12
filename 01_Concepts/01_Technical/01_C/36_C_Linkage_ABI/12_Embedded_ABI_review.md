@@ -3,41 +3,80 @@
 > Canonical C topic note — chapter 36.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Embedded ABI review**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+An **embedded ABI review** is a deliberate verification that every binary boundary in a firmware system agrees on symbol identity, calling convention, type representation, object layout and execution assumptions. It connects C source contracts to the actual linked image.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+Start by inventorying boundaries:
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+1. application ↔ driver;
+2. application ↔ bootloader;
+3. C ↔ assembly;
+4. C ↔ C++/Rust/other languages;
+5. vendor libraries ↔ application;
+6. secure ↔ non-secure or privilege-domain boundaries;
+7. compiler-generated startup/runtime ↔ application.
+
+For each boundary record function prototypes, data structures, alignment, ownership, calling convention, register preservation, symbol visibility, versioning and build options.
+
+Compile-time checks are useful:
+
+```c
+_Static_assert(sizeof(packet_t) == 16, "ABI packet size changed");
+_Static_assert(offsetof(packet_t, payload) == 4, "ABI payload offset changed");
+```
+
+But a complete ABI review also requires binary inspection.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+ABI defects are often catastrophic because the linker may succeed while the CPU executes an incompatible contract. Symptoms can include corrupted stacks, wrong register values, sporadic faults, only-release failures, incorrect floating-point values, or failures that depend on optimization.
+
+Review should cover:
+
+- architecture and ISA selection;
+- hard/soft floating-point mode;
+- endianness and data representation;
+- stack alignment;
+- register preservation;
+- structure packing/alignment;
+- interrupt/exception entry conventions;
+- linker script and section placement;
+- startup/runtime assumptions;
+- LTO and compiler optimization settings.
 
 ### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+Treat the **toolchain configuration** as part of the ABI. Pin compiler family/version where required, record flags, and prevent incompatible object files from entering the image. Keep a known-good ABI probe and build it in CI.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
+Do not limit review to function prototypes. A function can have the correct source declaration while the surrounding ABI is wrong. Examples include a structure whose packing differs between producer and consumer, a function compiled with a different floating-point convention, or assembly that fails to preserve a nonvolatile register.
 
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
+Another subtle issue is version drift: a bootloader compiled months earlier may expect an old application header or structure layout. Source compatibility in the current tree does not validate the deployed binary relationship.
 
 ## Example pattern
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
+typedef struct {
+    uint32_t version;
+    uint32_t length;
+    uint8_t payload[8];
+} image_header_t;
+
+_Static_assert(sizeof(image_header_t) == 16, "header ABI changed");
+_Static_assert(offsetof(image_header_t, payload) == 8, "header ABI changed");
 ```
 
+Pair these checks with an explicit version field and runtime validation at the image boundary.
+
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+A practical ABI review uses four evidence layers:
+
+1. **source** — prototypes, typedefs, qualifiers and contracts;
+2. **compiler** — record layouts, warnings and generated assembly;
+3. **linker** — symbol table, relocations, section placement and map;
+4. **hardware** — register/stack inspection, fault capture and timing measurements.
+
+When a fault occurs at a boundary, capture PC/LR, stack pointer, relevant argument/return registers and fault status. Compare them with the ABI specification before changing application logic.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+For embedded systems, ABI review is a **binary-contract audit**. A Staff engineer should be able to trace an interface from C declaration → compiler classification → object symbols → linker placement → CPU registers/stack → deployed image, and identify exactly where an assumption is guaranteed or merely toolchain-specific.
 
 ## Related
 [[00_Chapter_Index]]
