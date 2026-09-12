@@ -42,8 +42,9 @@ Inspect the map file to determine what the chosen libc implementation actually l
 
 ## Example pattern
 ```c
-#include <stdio.h>
+#include <inttypes.h>
 #include <stdint.h>
+#include <stdio.h>
 
 static int format_status(char *dst, size_t cap, uint32_t id)
 {
@@ -57,8 +58,6 @@ static int format_status(char *dst, size_t cap, uint32_t id)
     return 0;
 }
 ```
-
-> The example requires `<inttypes.h>` for `PRIu32`; that macro is preferable to assuming that `uint32_t` is always represented by `unsigned int`.
 
 ## Verification / debugging
 Enable compiler format checking where supported, such as GCC/Clang `-Wformat -Wformat-security -Wformat-signedness`. Unit-test every truncation boundary and verify negative, maximum-width, zero, and large-value cases. Review format strings as API contracts, not as presentation-only text.
