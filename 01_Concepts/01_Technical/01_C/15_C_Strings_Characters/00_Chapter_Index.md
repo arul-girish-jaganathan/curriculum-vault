@@ -1,24 +1,29 @@
-# Characters, Strings and Text
+# Chapter 15: C Strings & Characters
 
-## Chapter purpose
-A deep-reference chapter in the C language knowledge base. Use it to understand the rule, reason about compiler and ABI effects, and apply it safely in embedded firmware.
+## Overview
+This chapter provides the canonical architectural reference for character types, character constants, string literals, null-termination invariants, standard library string routines, buffer management, wide/multibyte characters, and safe embedded string handling in ISO C (C99/C11/C17/C23).
 
-## Topics
-- [[01_Character_types|Character types]]
-- [[02_Character_constants|Character constants]]
-- [[03_String_literals|String literals]]
-- [[04_Null_termination|Null termination]]
-- [[05_strlen_and_sizeof|strlen and sizeof]]
-- [[06_String_copying|String copying]]
-- [[07_String_concatenation|String concatenation]]
-- [[08_Tokenization|Tokenization]]
-- [[09_Locale_sensitive_character_APIs|Locale-sensitive character APIs]]
-- [[10_Wide_multibyte_characters|Wide/multibyte characters]]
-- [[11_Buffer_sizing|Buffer sizing]]
-- [[12_Embedded_string_handling|Embedded string handling]]
+## Topic Index
+*   [[01_Character_types]]
+*   [[02_Character_constants]]
+*   [[03_String_literals]]
+*   [[04_Null_termination]]
+*   [[05_strlen_and_sizeof]]
+*   [[06_String_copying]]
+*   [[07_String_concatenation]]
+*   [[08_Tokenization]]
+*   [[09_Locale_sensitive_character_APIs]]
+*   [[10_Wide_multibyte_characters]]
+*   [[11_Buffer_sizing]]
+*   [[12_Embedded_string_handling]]
 
-## Review prompts
-- What is guaranteed by ISO C?
-- What depends on the implementation, ABI, compiler, libc, or target?
-- What failure mode would appear on an embedded system?
-- What test or inspection would prove the behavior?
+## Cross-Cutting References
+*   [[14_C_Arrays_VLA/01_Array_declaration]]
+*   [[14_C_Arrays_VLA/03_Array_to_pointer_decay]]
+*   [[13_C_Pointers/01_Pointer_declarations]]
+*   [[13_C_Pointers/06_const_pointer_combinations]]
+*   [[Memory Alignment and Padding]]
+*   [[Linker Scripts and Memory Sections]]
+
+---
+*Related: [[../00_Complete_Topic_Map]]*

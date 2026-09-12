@@ -1,44 +1,95 @@
-# Feature detection
-
-> Canonical C topic note — chapter 19.
+# 07: Feature Detection
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Feature detection**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+Feature detection macros are built-in preprocessor operators and predefined identifiers that allow code to introspect the capabilities of the compiler and standard library at compile time. Standardized across modern C and C++ (e.g., `__has_include`, `__has_builtin`, `__has_attribute`, `__has_feature`), they eliminate fragile compiler-version checks in favor of capability-based compilation.
 
-## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+## Scope and Boundaries
+Covers: `__has_include`, `__has_builtin`, `__has_attribute`, compiler portability wrappers, and version-checking anti-patterns.
+Does not cover: Build-system feature testing (e.g., CMake `check_include_file`).
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+## Why Does It Exist
+Historically, portable code was littered with brittle version comparisons like `#if defined(__GNUC__) && (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 8))`. Feature detection allows direct, toolchain-agnostic queries about specific capabilities (e.g., does this compiler support `<stdatomic.h>` or `__builtin_clz`?).
 
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+## Mechanism and Language Rules
+1. **`__has_include` (C23 / Modern Extension):** Evaluates to `1` in preprocessor conditionals if the specified header can be found and opened, `0` otherwise:
+   `#if __has_include(<stdatomic.h>)`.
+2. **`__has_builtin` (Clang / GCC 10+):** Evaluates to `1` if the compiler supports a specific intrinsic function:
+   `#if __has_builtin(__builtin_bswap32)`.
+3. **`__has_attribute`:** Evaluates to `1` if the compiler supports a specific GNU-style attribute (e.g., `packed`, `aligned`).
+4. **Fallback Guard Idiom:** To prevent errors on older compilers that do not support feature detection operators, always define fallback stubs before evaluating them.
 
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
-
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
+## Examples
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
+#include <stdint.h>
+
+/* Safe compatibility shim for feature detection */
+#ifndef __has_builtin
+    #define __has_builtin(x) 0
+#endif
+
+#ifndef __has_include
+    #define __has_include(x) 0
+#endif
+
+#ifndef __has_attribute
+    #define __has_attribute(x) 0
+#endif
+
+/* Portable Byte-Swap Implementation */
+static inline uint32_t portable_bswap32(uint32_t val) {
+#if __has_builtin(__builtin_bswap32)
+    return __builtin_bswap32(val); /* Single CPU instruction (REV on ARM) */
+#else
+    /* Fallback portable bit-shift arithmetic */
+    return (((val & 0xFF000000u) >> 24) |
+            ((val & 0x00FF0000u) >>  8) |
+            ((val & 0x0000FF00u) <<  8) |
+            ((val & 0x000000FFu) << 24));
+#endif
 }
+
+/* Optional Header Inclusion */
+#if __has_include(<sanitizer/asan_interface.h>)
+    #include <sanitizer/asan_interface.h>
+    #define ASAN_PRESENT 1
+#else
+    #define ASAN_PRESENT 0
+#endif
 ```
 
-## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+## Undefined, Unspecified, and Implementation-Defined Behavior
+- Invoking `__has_include` or `__has_builtin` on older compilers (e.g., pre-GCC 5 or C89/C99 without extensions) triggers a syntax error unless preceded by defensive `#ifndef` shims.
 
-## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+## Edge Cases and Failure Modes
+- **Macro Guard Precedence Trap:** Checking `#if defined(__has_include)` is valid in C23, but older GCC versions treat `__has_include` as a special operator rather than an ordinary macro. The standard defensive idiom is `#ifndef __has_include #define __has_include(x) 0 #endif`.
+- **False Positives on Header Stubs:** If a build tree contains an empty or broken stub header, `__has_include` evaluates to `1` even though compilation will subsequently fail.
 
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+## Embedded Implications
+- **Hardware Intrinsics:** Microcontroller firmware relies heavily on intrinsics for count-leading-zeros (`__builtin_clz`), byte reversal (`__builtin_bswap16`), and interrupt toggling. Feature detection allows writing single-source portable drivers that automatically exploit hardware accelerations where available.
+
+## Firmware Review Angle
+- Replace hardcoded compiler version checks (`#if __GNUC__ >= 7`) with capability checks (`__has_builtin`).
+- Ensure all feature detection uses the standard `#ifndef __has_*` fallback shims to support legacy proprietary cross-compilers (Keil ARMCC, IAR, Cosmic).
+
+## Compiler, ABI, and Toolchain Implications
+- Standardized formally in ISO C23; supported as extensions in Clang since 3.0 and GCC since 5.0 (for includes) and 10.0 (for builtins).
+
+## Performance, Memory, Timing, and Power
+- Enables seamless fallback from single-cycle hardware CPU instructions to portable software algorithms without manual configuration.
+
+## Verification / Debugging
+- Test builds using multiple toolchains (GCC, Clang, IAR) in CI to verify fallback paths compile and pass unit tests cleanly.
+
+## Safety, Security, and Reliability
+- Prevents compilation failures when migrating between toolchains in safety-critical pipelines.
+
+## Trade-offs and Alternatives
+- **Preprocessor Feature Detection vs. Build-System Probing:** Preprocessor detection is self-contained within source files and requires no CMake/Autotools script support, but is limited to compiler/header-level introspection.
+
+## Staff-Level Takeaway
+Abandon brittle compiler version arithmetic (`#if __GNUC__ == ...`). Adopt `__has_builtin` and `__has_include` protected by defensive fallback shims to build clean, self-introspecting, multi-compiler embedded software.
+
+## Related Concepts
+- `01_File_inclusion`
+- `03_Conditional_inclusion`
+- `06_Predefined_macros`

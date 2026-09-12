@@ -1,44 +1,79 @@
-# Definition ownership
-
-> Canonical C topic note — chapter 21.
+# 05: Definition Ownership
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Definition ownership**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+Definition ownership is the architectural rule that every object, variable, and non-inline function must have exactly one translation unit that owns its physical storage allocation and lifetime. All other translation units must interact with that object solely through non-allocating declarations.
 
-## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+## Scope and Boundaries
+Covers: The One Definition Rule (ODR) in C, storage allocation in `.data`/`.bss`, multiple definition linker errors (`multiple definition of ...`), and tentative definitions.
+Does not cover: Inline functions with internal linkage (`static inline`).
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+## Why Does It Exist
+Unlike C++, C has historically permitted ambiguous "tentative definitions" where uninitialized global variables in multiple files could be merged by the linker (common storage model). Modern toolchains (GCC 10+) default to `-fno-common`, causing duplicate global definitions to throw fatal linker errors. Enforcing strict definition ownership prevents binary collisions and indeterminate memory initialization.
 
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+## Mechanism and Language Rules
+1. **Single Definition Rule:** An object shall have exactly one definition across the entire program.
+2. **Declaration vs Definition:**
+   - `extern int counter;` -> Declaration (0 bytes allocated).
+   - `int counter;` or `int counter = 0;` -> Definition (Allocates `sizeof(int)` in `.bss` or `.data`).
+3. **Owner Translation Unit:** The `.c` file that implements the subsystem must define the object and initialize its starting state.
 
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
-
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
+## Examples
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
+/* ================= INCORRECT: Definition in Header ================= */
+/* sensor.h */
+#ifndef SENSOR_H
+#define SENSOR_H
+int g_sensor_reading; /* ERROR: Every file including sensor.h allocates storage! */
+#endif
+
+/* Linker fails with: multiple definition of `g_sensor_reading` */
+
+/* ================= CORRECT: Strict Definition Ownership ============ */
+/* sensor.h */
+#ifndef SENSOR_H
+#define SENSOR_H
+extern int g_sensor_reading; /* Declarative reference only */
+#endif
+
+/* sensor.c */
+#include "sensor.h"
+int g_sensor_reading = 0; /* Owner TU: Allocates memory once */
 ```
 
-## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+## Undefined, Unspecified, and Implementation-Defined Behavior
+- Under legacy toolchains with `-fcommon`, multiple definitions without initializers are merged into a single common block. Under `-fno-common` (modern standard), this causes fatal link-time errors.
 
-## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+## Edge Cases and Failure Modes
+- **Header Constants Without `static`:** Writing `const uint32_t TIMEOUT = 100;` in a header creates an external symbol definition in every translation unit that includes it, failing the build with multiple definition linker errors.
+  *Fix:* Use `static const uint32_t TIMEOUT = 100;` or an enum.
 
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+## Embedded Implications
+- **SRAM Section Mapping:** Embedded linkers use definition ownership to place variables into specific hardware RAM banks via section attributes (`__attribute__((section(".ccmram")))`). Only the owning `.c` file can specify this placement.
+
+## Firmware Review Angle
+- Confirm that no header file contains variable definitions without `extern` or `static`.
+- Verify that compiler flags include `-fno-common` to ensure linker enforcement of strict definition ownership.
+
+## Compiler, ABI, and Toolchain Implications
+- The defining translation unit assigns the symbol to the `.bss` (uninitialized) or `.data` (initialized) section of its ELF output.
+
+## Performance, Memory, Timing, and Power
+- Strict ownership guarantees deterministic variable placement and eliminates memory bloat from duplicated definitions.
+
+## Verification / Debugging
+- Check symbol bindings in compiled object files:
+  `nm file.o | grep ' B '` shows uninitialized definitions owned by this TU.
+
+## Safety, Security, and Reliability
+- MISRA C:2012 Rule 8.6: An identifier with external linkage shall have exactly one external definition.
+
+## Trade-offs and Alternatives
+- **Global Owner vs Static Encapsulation:** Making the variable `static` inside its `.c` file and providing access functions (`sensor_get_reading()`) provides even stronger ownership by eliminating external linkage entirely.
+
+## Staff-Level Takeaway
+A header must never allocate memory. Always enforce single definition ownership: declare variables in headers with `extern`, define them once in their owning `.c` file, and enforce `-fno-common` in your build flags to catch rogue definitions at link time.
+
+## Related Concepts
+- `04_External_declarations`
+- `11_Linkage_hygiene`
+- `12_Embedded_module_boundaries`

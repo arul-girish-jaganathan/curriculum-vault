@@ -1,44 +1,102 @@
-# Embedded allocation policy
-
-> Canonical C topic note — chapter 25.
+# 12: Embedded Allocation Policy
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Embedded allocation policy**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+Embedded Allocation Policy is the strict architectural governance defining how memory is acquired, managed, and released in resource-constrained embedded systems, bare-metal firmware, and safety-critical microcontrollers.
 
-## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+## Scope and Boundaries
+- **Covers:** Prohibition of dynamic heap allocation (`malloc`/`free`), static memory pre-allocation, stack-size budgeting, link-time memory partitioning, and deterministic safety guidelines.
+- **Does not cover:** Hosted OS heap management or dynamic desktop memory models.
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+## Why Does It Exist
+Embedded systems (automotive, aerospace, medical devices) require absolute reliability and determinism:
+- **Elimination of Failure Modes:** General heap allocation (`malloc`) can fail due to fragmentation or exhaustion, leading to unhandled null-pointer crashes or unpredictable behavior.
+- **Hard Real-Time Determinism:** `malloc` and `free` have non-deterministic execution times depending on heap free-list traversal, violating hard real-time deadlines.
+- **Safety Standard Compliance:** Coding standards (MISRA C, JSF AV, NASA C) heavily restrict or outright ban dynamic heap allocation in safety-critical systems.
 
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+## Mechanism and Language Rules
+1. **Total Prohibition of Runtime Heaps:** Ban `malloc`, `calloc`, `realloc`, and `free` entirely from production firmware.
+2. **Static Pre-Allocation:** All tasks, buffers, message queues, and communication channels must be statically allocated at compile time as global or static variables.
+3. **Linker Script Partitioning:** Explicitly define memory regions (`.text`, `.data`, `.bss`, stack, and static pools) in the linker script (`linker.ld`) to guarantee memory boundaries and prevent stack-heap collisions.
+4. **Static Analysis & Stack High-Water Marking:** Enforce strict stack size limits and analyze call graphs statically to prove stack exhaustion is mathematically impossible.
 
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
-
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
+## Examples
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
+/* ==================== embedded_policy.c ==================== */
+#include <stdint.h>
+#include <stdbool.h>
+
+#if defined(__STDC_HOSTED__) && __STDC_HOSTED__ == 1
+    #error "This firmware adheres to strict embedded freestanding allocation policy!"
+#endif
+
+/* STATIC PRE-ALLOCATION: Zero runtime malloc/free */
+#define MAX_SENSORS 8
+#define SENSOR_QUEUE_LEN 32
+
+typedef struct {
+    uint32_t sensor_id;
+    float reading;
+    uint32_t timestamp;
+} sensor_msg_t;
+
+static sensor_msg_t g_sensor_pool[SENSOR_QUEUE_LEN];
+static size_t g_pool_head = 0;
+static size_t g_pool_tail = 0;
+static bool g_pool_full = false;
+
+bool static_queue_push(uint32_t id, float reading, uint32_t timestamp) 
 {
-    return x;
+    if (g_pool_full) {
+        return false; /* Handle capacity limits deterministically without dynamic growth */
+    }
+
+    g_sensor_pool[g_pool_tail].sensor_id = id;
+    g_sensor_pool[g_pool_tail].reading = reading;
+    g_sensor_pool[g_pool_tail].timestamp = timestamp;
+
+    g_pool_tail = (g_pool_tail + 1) % SENSOR_QUEUE_LEN;
+    if (g_pool_tail == g_pool_head) {
+        g_pool_full = true;
+    }
+    return true;
 }
 ```
 
-## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+## Undefined, Unspecified, and Implementation-Defined Behavior
+- **Linker Script Violations:** Placing initialized data in uninitialized sections or overflowing stack boundaries into static `.bss` space triggers hard faults.
 
-## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+## Edge Cases and Failure Modes
+- **Fixed-Capacity Limits:** Static pre-allocation means maximum bounds must be chosen at compile time. If peak runtime load exceeds static buffer capacity, the system must handle overflow gracefully rather than dynamically expanding.
 
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+## Embedded Implications
+- **MCU RAM Budgets:** Forces engineers to calculate exact RAM requirements down to the byte during system design, eliminating hidden memory waste.
+- **Predictable Power & Performance:** Deterministic memory access ensures consistent CPU timing and predictable low-power sleep state transitions.
+
+## Firmware Review Angle
+- **Ban `malloc` / `free`:** Configure static analyzers and compiler flags (`-Werror=implicit-function-declaration` or custom AST rules) to reject any inclusion or call to standard heap allocators.
+- **Audit Static Buffer Sizing:** Verify that statically allocated buffers provide sufficient margin for worst-case operational scenarios.
+
+## Compiler, ABI, and Toolchain Implications
+- **Linker Map Analysis:** Review `.map` files generated during compilation to verify exact RAM and Flash utilization percentages across all sections.
+
+## Performance, Memory, Timing, and Power
+- **Zero Allocation Overhead:** Static allocation incurs zero runtime CPU cycles for memory management, achieving maximum execution speed and minimum power consumption.
+
+## Verification / Debugging
+- **Stack High-Water Marks:** Fill stack memory regions with a known magic pattern (e.g., `0xDEADBEEF`) at startup and inspect remaining untouched patterns post-execution to measure precise stack consumption.
+
+## Safety, Security, and Reliability
+- **Certification Readiness:** Static allocation policies are mandatory for achieving certification under ISO 26262 (ASIL-D), IEC 61508, and DO-178C (DAL-A).
+
+## Trade-offs and Alternatives
+- **Static Allocation vs. Dynamic Heaps:** Static allocation is 100% deterministic, safe, and robust but requires upfront sizing and prevents flexible memory sharing across disparate modules.
+
+## Staff-Level Takeaway
+In mission-critical embedded systems, the heap is your enemy. Adopt a zero-malloc allocation policy: pre-allocate all resources statically at compile time, use fixed-size pools or arenas for structured concurrency, and prove memory safety mathematically. Determinism is the hallmark of professional firmware engineering.
+
+## Related Concepts
+- [[00_Chapter_Index]]
+- [[07_Allocation_failure]]
+- [[09_Memory_fragmentation]]
+- [[11_Pools_and_arenas]]
+- [[../24_C_Threads_C11/11_Freestanding_limitations]]

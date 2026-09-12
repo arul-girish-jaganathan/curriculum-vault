@@ -1,44 +1,84 @@
-# Public headers
-
-> Canonical C topic note — chapter 21.
+# 01: Public Headers
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Public headers**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+A public header is an interface specification file (`.h`) intentionally exposed to external subsystems, clients, or third-party integrators. It contains the minimal set of function prototypes, types, enumerations, and constants necessary to consume a module's capabilities without exposing internal data structures, register definitions, or implementation dependencies.
 
-## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+## Scope and Boundaries
+Covers: Public API contracts, interface minimalism, header isolation, and binary compatibility surfaces.
+Does not cover: Internal intra-module headers (see `02_Private_headers`) or compiler-specific intrinsics.
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+## Why Does It Exist
+C enforces no language-level visibility access controls (e.g., `public`/`private`). Without strict conventions for public headers, implementation details leak into client code, tightly coupling consumers to internal driver layouts and forcing widespread rebuilds or runtime failures whenever internals change.
 
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+## Mechanism and Language Rules
+1. **Minimal Surface Area:** Public headers declare only what callers must call or configure.
+2. **No Storage Allocation:** Never define non-const variables or allocate memory in public headers.
+3. **Pure Declarations:** Functions must be declared with prototypes (`ret_t func(param_t p);`).
+4. **Exported Symbols:** All public functions implicitly have external linkage (`extern`).
 
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
-
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
+## Examples
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
+/* hal_uart.h - Clean Public API Header */
+#ifndef HAL_UART_H
+#define HAL_UART_H
+
+#include <stdint.h>
+#include <stdbool.h>
+#include <stddef.h>
+
+/* Opaque handle pattern hides silicon register structures */
+typedef struct UartDevice* UartHandle;
+
+typedef enum {
+    UART_BAUD_9600   = 9600,
+    UART_BAUD_115200 = 115200
+} UartBaud_t;
+
+typedef struct {
+    UartBaud_t baud;
+    bool       parity_enable;
+} UartConfig_t;
+
+UartHandle uart_init(uint8_t port_index, const UartConfig_t *config);
+bool       uart_write(UartHandle handle, const uint8_t *data, size_t length);
+void       uart_deinit(UartHandle handle);
+
+#endif /* HAL_UART_H */
 ```
 
-## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+## Undefined, Unspecified, and Implementation-Defined Behavior
+- Including implementation-defined hardware types (e.g., vendor MMIO register maps) in public headers makes client compilation implementation-defined and non-portable.
 
-## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+## Edge Cases and Failure Modes
+- **Leaking Hardware Headers:** `#include <stm32f4xx.h>` in a public header couples application business logic to specific chip silicon, making software emulation on desktop hosts impossible.
+- **Accidental Static Function Inlining:** Placing non-trivial `static inline` functions in public headers bloats client translation units and exposes implementation algorithms.
 
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+## Embedded Implications
+- **Host Testing & Emulation:** Keeping public headers hardware-agnostic allows application code to be compiled against mock driver libraries on x86 CI pipelines without cross-compilers or hardware.
+
+## Firmware Review Angle
+- Confirm the public header contains zero `#include` directives to vendor silicon SDKs or private driver internals.
+- Verify that every public function parameter is properly `const`-qualified for read-only pointer inputs.
+
+## Compiler, ABI, and Toolchain Implications
+- Changes to public headers trigger rebuilds of all dependent translation units across the build system.
+
+## Performance, Memory, Timing, and Power
+- Opaque public headers eliminate compile-time inlining across modules (unless LTO is enabled), trading micro-optimizations for total architectural decoupling.
+
+## Verification / Debugging
+- Static analysis: Enforce that application layer `.c` files only include headers from the `include/public/` directory tree.
+
+## Safety, Security, and Reliability
+- MISRA C:2012 Rule 8.5: An external object or function shall be declared once in one and only one file.
+
+## Trade-offs and Alternatives
+- Public headers sacrifice direct field access for long-term ABI stability and maintainability.
+
+## Staff-Level Takeaway
+A public header is an immutable contract. Keep it clean, minimal, and completely free of silicon-specific register layouts or private state structs. Use opaque handles to achieve absolute modular encapsulation.
+
+## Related Concepts
+- `02_Private_headers`
+- `06_Opaque_interfaces`
+- `07_Header_self_sufficiency`

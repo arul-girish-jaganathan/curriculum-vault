@@ -1,44 +1,85 @@
-# Naming strategy
-
-> Canonical C topic note — chapter 18.
+# 12: Naming Strategy
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Naming strategy**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+A typedef naming strategy is a systematic convention for naming type aliases across an engineering organization. It establishes clear visual distinction between types, objects, and macros, while navigating standardized language reservations such as POSIX `_t` namespace restrictions.
 
-## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+## Scope and Boundaries
+Covers: Identifier conventions (`_t`, CamelCase, prefixing), POSIX namespace reservations, MISRA compliance, and cross-team interface consistency.
+Does not cover: Formatting whitespace or brace placement.
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+## Why Does It Exist
+Without strict naming guidelines, large embedded codebases devolve into conflicting styles: `uint32`, `u32`, `U32`, `UInt32`, and `uint32_t` appearing in the same file. Inconsistent naming causes namespace collisions, impairs readability, and can violate POSIX standards.
 
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+## Mechanism and Language Rules
+1. **The POSIX `_t` Reservation:** IEEE Std 1003.1 (POSIX) officially reserves all identifiers ending in `_t` for future standard library expansion.
+   * *Strict POSIX conformance:* User code should avoid creating new identifiers ending in `_t` if compiling for POSIX-compliant environments.
+   * *Embedded Reality:* In bare-metal and RTOS firmware (FreeRTOS, CMSIS, Zephyr), `_t` is the near-universal convention for typedefs.
+2. **Namespace Prefixing:** Module-level prefixing (e.g., `uart_handle_t`, `ble_conn_params_t`) prevents identifier collisions in C's unified global ordinary identifier namespace.
+3. **Tag vs Alias Naming:** Maintaining parity between struct tags and their aliases:
+   `typedef struct UartDriver UartDriver;` (CamelCase convention) or
+   `typedef struct uart_driver_s uart_driver_t;` (Snake_case convention).
 
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
-
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
+## Examples
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
+#include <stdint.h>
+#include <stdbool.h>
+
+/* Enterprise Embedded Naming Conventions */
+
+/* 1. Snake_case with Module Prefix and _t (Standard Embedded / FreeRTOS style) */
+typedef struct can_filter_config_s {
+    uint32_t filter_id;
+    uint32_t filter_mask;
+    bool     is_extended;
+} can_filter_config_t;
+
+/* 2. PascalCase / CamelCase (CMSIS / MISRA friendly) */
+typedef struct {
+    uint32_t BaudRate;
+    uint16_t Parity;
+    uint8_t  StopBits;
+} UART_ConfigTypeDef;
+
+/* 3. POSIX-Safe Alternative for host tools */
+typedef struct memory_pool_s memory_pool_type;
 ```
 
-## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+## Undefined, Unspecified, and Implementation-Defined Behavior
+- Defining a type name ending in `_t` on a POSIX-compliant system technically risks colliding with a future system header definition, which results in compilation failure.
 
-## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+## Edge Cases and Failure Modes
+- **Suffix Inconsistency:** Mixing `_t`, `_type`, and bare names leads developers to mistake types for variables:
+  `status code;` vs `status_t code;`.
+- **Clashing with Standard Headers:** Creating custom `bool_t`, `size_t`, or `int8_t` aliases collides with `<stdbool.h>` and `<stdint.h>`.
 
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+## Embedded Implications
+- In resource-constrained teams working on bare-metal systems (ARM Cortex-M, RISC-V), following the CMSIS convention (`Module_TypeDef`) or the standard C99 snake_case convention (`module_type_t`) establishes consistency across millions of lines of code.
+
+## Firmware Review Angle
+- Enforce strict adherence to one naming standard across the repository:
+  - Either all types use `_t` suffix, OR all types use `CamelCase`. Never mix both within the same layer.
+- Ensure all public types include the module namespace prefix (e.g., `spi_*`, `crypto_*`).
+
+## Compiler, ABI, and Toolchain Implications
+- Naming conventions have no impact on generated assembly or ABI registers.
+
+## Performance, Memory, Timing, and Power
+- Zero runtime impact.
+
+## Verification / Debugging
+- Enforce naming conventions automatically in CI using `clang-tidy` (`readability-identifier-naming`).
+
+## Safety, Security, and Reliability
+- Clear naming prevents accidental type shadowing and reduces cognitive load during code audits.
+- MISRA C:2012 Rule 5.6 mandates that all typedef names be globally unique identifiers.
+
+## Trade-offs and Alternatives
+- **`_t` Suffix vs POSIX Purity:** In pure Linux user-space code, use `_type` or CamelCase to strictly respect POSIX reservations. In embedded/bare-metal firmware, `_t` remains the accepted industry standard.
+
+## Staff-Level Takeaway
+Choose a naming convention and enforce it mechanically via linter scripts. For bare-metal firmware, prefix every public typedef with its module namespace and append `_t` or use PascalCase (`Uart_Config_t`). Never allow untagged, un-prefixed generic type names in public interfaces.
+
+## Related Concepts
+- `01_Basic_typedefs`
+- `02_Struct_typedefs`
+- `10_MISRA_oriented_typedef_usage`

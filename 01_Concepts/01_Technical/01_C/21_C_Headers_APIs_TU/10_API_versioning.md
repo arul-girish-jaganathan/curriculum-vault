@@ -1,44 +1,89 @@
-# API versioning
-
-> Canonical C topic note — chapter 21.
+# 10: API Versioning
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **API versioning**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+API versioning is the engineering practice of managing changes, extensions, and deprecations in public interfaces over time without breaking backward source compatibility (API) or binary compatibility (ABI) for existing consumers.
 
-## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+## Scope and Boundaries
+Covers: Semantic versioning macros, compiler deprecation attributes (`__attribute__((deprecated))`), ABI padding, and symbol migration wrappers.
+Does not cover: Git branch management or package manager repositories.
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+## Why Does It Exist
+Embedded systems in production cannot tolerate breaking changes. Bootloaders in ROM, external application modules, and communication protocols must maintain long-term compatibility across firmware updates without requiring simultaneous re-flashing of every subsystem.
 
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+## Mechanism and Language Rules
+1. **Semantic Versioning Macros:** Headers expose compile-time version metadata:
+   `#define MODULE_VERSION_MAJOR 2`.
+2. **Deprecation Directives:** Compilers provide attributes to warn developers of obsolete functions without breaking the build:
+   `__attribute__((deprecated("Use uart_write_v2() instead")))`.
+3. **Reserved ABI Padding:** Public structures incorporate reserved padding arrays to allow future expansion without changing structure size or member offsets.
 
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
-
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
+## Examples
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
+/* ================= File: drv_sensor.h ================= */
+#ifndef DRV_SENSOR_H
+#define DRV_SENSOR_H
+
+#include <stdint.h>
+
+#define SENSOR_API_VERSION_MAJOR 2
+#define SENSOR_API_VERSION_MINOR 1
+
+/* Struct with reserved ABI padding for future expansion */
+typedef struct {
+    uint16_t sample_rate_hz;
+    uint8_t  filter_mode;
+    uint8_t  _reserved1;      /* Preserves alignment */
+    uint32_t _reserved2[3];   /* Expansion reserve: maintains sizeof across versions */
+} SensorConfig_t;
+
+/* Modern API function */
+int32_t sensor_read_calibrated(int32_t *out_data);
+
+/* Deprecated legacy function with compiler diagnostic notice */
+#if defined(__GNUC__) || defined(__clang__)
+    #define DEPRECATED(msg) __attribute__((deprecated(msg)))
+#else
+    #define DEPRECATED(msg)
+#endif
+
+DEPRECATED("sensor_read_raw() is deprecated; migrate to sensor_read_calibrated()")
+int32_t sensor_read_raw(int16_t *out_data);
+
+#endif /* DRV_SENSOR_H */
 ```
 
-## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+## Undefined, Unspecified, and Implementation-Defined Behavior
+- Altering the size or member offsets of a struct used by precompiled libraries without updating the library causes binary corruption (Undefined Behavior).
 
-## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+## Edge Cases and Failure Modes
+- **Silent Struct Reordering:** Reordering struct members across API revisions preserves source syntax, but silently corrupts data when linked against precompiled object binaries.
 
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+## Embedded Implications
+- **Bootloader to Application Contracts:** A bootloader calling application entry points must rely on a fixed ABI table (function pointer vectors) that remains stable across all future application releases.
+
+## Firmware Review Angle
+- Confirm that any breaking change to an existing public API increments the `MAJOR` version number.
+- Verify that deprecated functions trigger compiler warnings and include migration guidance in their warning strings.
+
+## Compiler, ABI, and Toolchain Implications
+- Compiler attribute `__attribute__((deprecated))` emits compile-time diagnostics during Translation Phase 7 without generating extra machine code.
+
+## Performance, Memory, Timing, and Power
+- Reserving padding words in configuration structures costs a few bytes of RAM/Flash, but protects the architecture from future ABI breakage.
+
+## Verification / Debugging
+- Use `abi-compliance-checker` on compiled `.so` / `.a` libraries to detect unintended symbol signature changes between firmware releases.
+
+## Safety, Security, and Reliability
+- Controlled API versioning prevents silent parameter mismatches in safety-critical systems (IEC 61508 / ISO 26262).
+
+## Trade-offs and Alternatives
+- **Deprecation vs Immediate Removal:** Deprecation temporarily increases codebase size with backward-compatibility shims, but prevents abrupt build breaks across distributed teams.
+
+## Staff-Level Takeaway
+Never change an existing public API without a versioning strategy. Use deprecation attributes with actionable migration messages, reserve expansion padding in public structs to preserve ABI offsets, and communicate breaking updates through semantic version macros.
+
+## Related Concepts
+- `01_Public_headers`
+- `06_Opaque_interfaces`
+- `11_Linkage_hygiene`

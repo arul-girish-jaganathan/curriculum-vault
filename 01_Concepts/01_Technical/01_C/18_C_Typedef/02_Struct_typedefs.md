@@ -1,44 +1,87 @@
-# Struct typedefs
-
-> Canonical C topic note — chapter 18.
+# 02: Struct Typedefs
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Struct typedefs**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+Struct typedefs pair a structure declaration with a type alias, allowing developers to use the alias directly without repeatedly typing the `struct` elaboration tag. C supports several idiom variations: named tags with aliases, anonymous struct typedefs, and forward-declared self-referential structures.
 
-## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+## Scope and Boundaries
+Covers: Named vs anonymous struct typedefs, self-referential pointer members (linked lists, trees), forward declarations, and namespace partitioning.
+Does not cover: Opaque pointers (see `03_Opaque_typedefs`) or flexible array member specifics (see `16_C_Struct_Union_Enum/06_Flexible_array_members`).
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+## Why Does It Exist
+In C, structure tags reside in their own tag namespace (`struct TagName`), distinct from the ordinary identifier namespace. Without a `typedef`, declaring a structure variable requires writing `struct TagName instance;`. A struct typedef bridges the tag into the ordinary namespace for clean, concise typing.
 
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+## Mechanism and Language Rules
+1. **Namespace Independence:** The tag namespace (`tags`) and ordinary identifier namespace (`identifiers`) do not collide. Therefore:
+   `typedef struct Node Node;` is completely valid and idiomatic.
+2. **Anonymous Struct Typedef:** Omitting the tag (`typedef struct { int x; } Point;`) is legal, but prevents forward-declaring the type or creating self-referential pointer members.
+3. **Self-Reference Rule:** Inside a structure definition, the typedef name does not exist yet until the declaration closes. Self-referencing members must use the struct tag:
+   ```c
+   typedef struct Node {
+       struct Node *next; /* Valid */
+       // Node *prev;     /* ERROR: Node identifier not yet declared */
+   } Node;
+   ```
+4. **C11 Benign Redefinition:** Defining `typedef struct Foo Foo;` across multiple headers is valid in C11 onwards, provided the underlying definition is identical.
 
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
-
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
+## Examples
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
+#include <stddef.h>
+
+/* Recommended: Explicit tag AND matching typedef name */
+typedef struct QueueNode {
+    struct QueueNode *next; /* Self-reference requires struct tag */
+    void *payload;
+} QueueNode;
+
+/* Forward declaration for circular references */
+typedef struct Task Task;
+typedef struct Scheduler Scheduler;
+
+struct Task {
+    Scheduler *parent;
+    uint32_t   priority;
+};
+
+struct Scheduler {
+    Task      *current_task;
+    uint32_t   task_count;
+};
 ```
 
-## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+## Undefined, Unspecified, and Implementation-Defined Behavior
+- **Anonymous Struct Tag Synthesis:** Compilers synthesize an internal implementation-defined tag name for anonymous structs in DWARF symbols, which can hinder debugging or make forward declaration impossible.
 
-## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+## Edge Cases and Failure Modes
+- **Anonymous Struct Forward-Declaration Trap:** An anonymous struct typedef (`typedef struct { ... } Event_t;`) cannot be forward-declared in header files. Any header requiring `Event_t` must include the entire definition.
+- **Recursive Typedef Failure:** Attempting to reference the typedef alias inside the structure body before the closing brace causes a compile-time syntax error.
 
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+## Embedded Implications
+- **Header Coupling:** Anonymous struct typedefs force full struct declarations into public headers, increasing compilation times, exposing private layout details, and bloating rebuild trees across large embedded projects.
+
+## Firmware Review Angle
+- Enforce the rule: **Always provide a struct tag matching the typedef alias** (`typedef struct Node Node;`). Avoid anonymous struct typedefs for non-trivial types.
+- Check that self-referencing pointers use the struct tag name rather than macro workarounds.
+
+## Compiler, ABI, and Toolchain Implications
+- Struct tags and typedefs are purely front-end compile-time abstractions; they produce identical machine code and memory layouts.
+
+## Performance, Memory, Timing, and Power
+- No performance or memory impact.
+
+## Verification / Debugging
+- Anonymous structs often appear in GDB as `type = struct {...}` or `type = ._anon_0`, making stack traces and memory dumps harder to read compared to explicitly tagged structs (`struct QueueNode`).
+
+## Safety, Security, and Reliability
+- MISRA C:2012 Rule 5.7: A tag name shall be a unique identifier across the translation unit.
+- Explicit tagging allows static analyzers to track type identity deterministically across compilation units.
+
+## Trade-offs and Alternatives
+- **Tagged Struct vs. Anonymous Typedef:** Tagged structs take a few more characters to declare initially, but allow forward declarations, self-references, and clear debugger inspection.
+
+## Staff-Level Takeaway
+Never use anonymous struct typedefs in production headers. Always declare structures with explicit tags matching their typedef names (`typedef struct Device Driver DeviceDriver;`). This guarantees support for forward declarations, clean self-reference, and readable debugger call stacks.
+
+## Related Concepts
+- `01_Basic_typedefs`
+- `03_Opaque_typedefs`
+- `../16_C_Struct_Union_Enum/01_Structure_layout`

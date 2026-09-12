@@ -1,44 +1,74 @@
-# Deterministic numeric design
-
-> Canonical C topic note — chapter 30.
+# 12: Deterministic Numeric Design
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Deterministic numeric design**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+Deterministic numeric design is the architectural methodology of engineering C software computations to guarantee exact bit-for-bit reproducibility, bounded numerical stability, predictable execution timing, and immunity to platform-specific floating-point anomalies across diverse compiler toolchains and hardware targets.
 
-## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+## Scope and Boundaries
+- **Covers:** Fixed-point arithmetic, numerical stability patterns, deterministic control system design, and cross-platform reproducibility.
+- **Does not cover:** General floating types specifications or rounding modes.
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+## Why Does It Exist
+Mission-critical systems cannot tolerate non-deterministic numeric behavior:
+- **Toolchain Divergence:** Different compilers, optimization levels, and FMA instruction generation can produce slightly different floating-point results.
+- **Numerical Drift:** Accumulating small rounding errors over millions of cycles causes divergence in simulation and control systems.
 
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+## Mechanism and Language Rules
+- **Fixed-Point Scaling:** Using integers with implicit fractional scaling factors eliminates floating-point indeterminism entirely.
+- **Strict IEEE Conformance Flags:** Enforcing strict compiler flags ensures that compiler transformations do not alter mathematical execution order.
 
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
-
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
+## Examples
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
+#include <stdio.h>
+#include <stdint.h>
+
+int32_t q31_mul(int32_t a, int32_t b) 
 {
-    return x;
+    int64_t prod = (int64_t)a * (int64_t)b;
+    return (int32_t)(prod >> 31);
+}
+
+int main(void) 
+{
+    int32_t half = 0x40000000;
+    int32_t quarter = q31_mul(half, half);
+
+    printf("Deterministic Q31 multiplication result: 0x%08X\n", quarter);
+    return 0;
 }
 ```
 
-## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+## Undefined, Unspecified, and Implementation-Defined Behavior
+- **Implementation-Defined:** Signed integer overflow behavior during fixed-point multiplication if intermediate 64-bit casting is omitted.
 
-## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+## Edge Cases and Failure Modes
+- **Fixed-Point Overflow:** Failing to promote intermediate products to wider types leads to catastrophic overflow and wrap-around corruption.
 
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+## Embedded Implications
+- **Hard Real-Time Consensus:** Distributed embedded nodes must yield identical bitwise results for sensor fusion algorithms.
+
+## Firmware Review Angle
+- **Audit Math Libraries:** Ensure all safety-critical control modules disable fast-math optimizations and enforce strict floating-point standards where bit-for-bit reproducibility is required.
+
+## Compiler, ABI, and Toolchain Implications
+- **Deterministic Flags:** Use compiler options enforcing strict IEEE compliance to prevent compiler-induced numerical divergence.
+
+## Performance, Memory, Timing, and Power
+- **Maximized Determinism:** Fixed-point arithmetic provides uniform, cycle-accurate execution timing on all architectures.
+
+## Verification / Debugging
+- **Bitwise Regression Tests:** Implement automated unit tests that compare computed outputs against reference golden bit patterns.
+
+## Safety, Security, and Reliability
+- **Safety Certification:** Deterministic numeric design simplifies formal verification and safety certification under ISO 26262 and DO-178C standards.
+
+## Trade-offs and Alternatives
+- **Fixed-Point vs. Strict Floating-Point:** Fixed-point guarantees absolute bitwise determinism and speed at the cost of manual range scaling.
+
+## Staff-Level Takeaway
+Determinism is a design choice, not a default property of C numeric code. When engineering mission-critical systems, eliminate floating-point non-determinism by disabling fast-math optimizations, adopting fixed-point arithmetic where appropriate, and enforcing strict compiler verification standards.
+
+## Related Concepts
+- [[00_Chapter_Index]]
+- [[01_Floating_types]]
+- [[03_Precision]]
+- [[11_Embedded_floating_point_cost]]

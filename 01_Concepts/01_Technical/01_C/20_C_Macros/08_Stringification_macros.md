@@ -1,44 +1,93 @@
-# Stringification macros
-
-> Canonical C topic note — chapter 20.
+# 08: Stringification Macros
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Stringification macros**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+A stringification macro is a function-like macro that uses the `#` preprocessor operator to convert an argument into a string literal. The preprocessor wraps the substituted tokens in double quotes, collapses internal whitespace sequences, and automatically escapes internal quotation marks and backslashes.
 
-## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+## Scope and Boundaries
+Covers: The `#` stringizing operator, whitespace and escape handling, the two-tier evaluation pattern, and diagnostic string synthesis.
+Does not cover: Token concatenation (see `09_Token_pasting_macros`) or runtime string conversion (`itoa`).
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+## Why Does It Exist
+Firmware requires symbolic inspection: converting register bit names into printable strings, turning integer configuration parameters into compile-time string constants, and capturing expression text for assertion failure messages.
 
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+## Mechanism and Language Rules
+1. **Operand Binding:** The `#` operator must immediately precede a macro parameter in the replacement list: `#parameter`.
+2. **Prescan Suppression:** Using `#` on a parameter *suppresses* argument prescan. If the argument is itself a macro, it will NOT be expanded before stringification.
+3. **The Two-Level Stringize Pattern:** To stringify the *expanded value* of a macro, a two-level indirection is required:
+   ```c
+   #define STR(x)          STR_IMPL(x)
+   #define STR_IMPL(x)     #x
+   ```
+4. **Phase 6 Concatenation:** Stringified literals automatically merge with adjacent string literals during Translation Phase 6: `"Value: " STR(42)` becomes `"Value: 42"`.
 
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
-
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
+## Examples
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
+#include <stdio.h>
+#include <stdint.h>
+#include <assert.h>
+
+/* The Canonical Two-Tier Stringification Pattern */
+#define STRINGIFY(x)        STRINGIFY_IMPL(x)
+#define STRINGIFY_IMPL(x)   #x
+
+#define HW_REVISION         3
+#define BAUD_RATE           115200
+
+/* Diagnostic Assertion Capture Macro */
+#define HARDWARE_ASSERT(expr)     do {         if (!(expr)) {             panic_handler("Assertion [" #expr "] failed at " __FILE__ ":" STRINGIFY(__LINE__));         }     } while(0)
+
+static void panic_handler(const char *msg) {
+    (void)msg;
+}
+
+static void test_stringification(void) {
+    /* Without two-tier macro: #HW_REVISION produces "HW_REVISION" */
+    assert(strcmp(#HW_REVISION, "HW_REVISION") == 0);
+
+    /* With two-tier macro: STRINGIFY(HW_REVISION) produces "3" */
+    assert(strcmp(STRINGIFY(HW_REVISION), "3") == 0);
+
+    /* Combined literal synthesis */
+    const char *banner = "System Baud: " STRINGIFY(BAUD_RATE);
+    assert(strcmp(banner, "System Baud: 115200") == 0);
 }
 ```
 
-## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+## Undefined, Unspecified, and Implementation-Defined Behavior
+- If the result of stringification does not produce a valid C string literal, the behavior is undefined.
 
-## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+## Edge Cases and Failure Modes
+- **The Single-Level Failure:** Writing `#x` directly on a macro identifier captures the variable's source name rather than its value (e.g., `#BUILD_VER` yields `"BUILD_VER"`, not `"1.0.4"`).
+- **Macro Arguments with Special Characters:** Characters like `"` or `\` inside the macro argument are escaped, but multi-line arguments can introduce unexpected space sequences.
 
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+## Embedded Implications
+- **Flash Memory Bloat:** Capturing source expressions in assertions (`#expr`) places long ASCII strings into `.rodata` Flash. In MCUs with 32KB-64KB Flash, hundreds of stringized assertions can silently consume 30% of available memory.
+- **Git Commit Hashing:** Build systems pass compiler flags like `-DGIT_SHA=a3f81e` without quotes. Stringification cleanly transforms them into C string literals in firmware banners.
+
+## Firmware Review Angle
+- Ensure that stringification always employs the two-tier pattern (`STRINGIFY(x)` -> `STRINGIFY_IMPL(x)`).
+- Verify that debug assertions using stringification can be completely disabled in production release builds to conserve Flash memory.
+
+## Compiler, ABI, and Toolchain Implications
+- Strings generated by `#` are stored in read-only data sections (`.rodata`) with natural alignment; they adhere to standard C string ABI conventions.
+
+## Performance, Memory, Timing, and Power
+- Resolves completely at compile time; zero runtime calculation or CPU cycle cost.
+- Impact is limited entirely to Flash memory capacity.
+
+## Verification / Debugging
+- Inspect generated string literals via `gcc -E` to confirm correct escaping and token spacing.
+
+## Safety, Security, and Reliability
+- MISRA C:2012 Rule 20.10 (Advisory): The `#` and `##` preprocessor operators should not be used. (Permitted with documented deviations for assertions and build metadata).
+
+## Trade-offs and Alternatives
+- **Stringification vs Runtime Formatting:** Stringification evaluates at compile time with zero CPU cost, whereas `snprintf` requires runtime stack memory and CPU cycles.
+
+## Staff-Level Takeaway
+Never use single-tier stringification. Mandate the two-level `STRINGIFY(x)` indirection macro across all project headers, and enforce compiler flags to strip stringized debug assertions from release images when Flash space is constrained.
+
+## Related Concepts
+- `02_Function_like_macros`
+- `09_Token_pasting_macros`
+- `19_C_Preprocessor/04_Stringification`

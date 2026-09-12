@@ -1,44 +1,77 @@
-# IEEE 754 assumptions
-
-> Canonical C topic note — chapter 30.
+# 05: IEEE 754 Assumptions
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **IEEE 754 assumptions**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+IEEE 754 assumptions refer to the common developer practices of assuming that all C compiler toolchains target IEEE 754 floating-point representations (binary32 / binary64) and permitting bit-level type punning between integers and floats. ISO C does **not** strictly mandate IEEE 754 compliance for `float` and `double`, making such assumptions technically non-portable.
 
-## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+## Scope and Boundaries
+- **Covers:** IEEE 754 binary32/binary64 standards, bit-level casting assumptions, union type punning, and strict aliasing rules.
+- **Does not cover:** Floating types specifications, precision limits, or math library functions.
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+## Why Does It Exist
+Virtually all modern consumer and enterprise hardware (x86, ARM, RISC-V) implements IEEE 754 floating-point arithmetic natively:
+- **Performance Shortcuts:** Developers frequently exploit IEEE 754 bit layouts to perform fast inverse square roots, bitwise absolute values, or rapid exponent extractions.
+- **Portability Illusion:** Because IEEE 754 is ubiquitous, programmers assume C guarantees it, leading to subtle breakages on specialized DSPs or mainframes with non-IEEE floating-point formats.
 
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+## Mechanism and Language Rules
+- **Standard Stance:** ISO C permits non-IEEE 754 floating-point formats.
+- **Strict Aliasing Violation:** Casting an `int *` to a `float *` or using union type-punning to inspect float bits violates strict aliasing or union rules in strict ISO C, though compiler extensions or `memcpy` provide standard-compliant workarounds.
 
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
-
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
+## Examples
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
+#include <stdio.h>
+#include <string.h>
+#include <stdint.h>
+
+uint32_t float_to_bits(float f) 
 {
-    return x;
+    uint32_t u;
+    memcpy(&u, &f, sizeof(f));
+    return u;
+}
+
+int main(void) 
+{
+    float val = -5.0f;
+    uint32_t bits = float_to_bits(val);
+
+    printf("Float: %f, Hex Bits: 0x%08X\n", val, bits);
+    return 0;
 }
 ```
 
-## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+## Undefined, Unspecified, and Implementation-Defined Behavior
+- **Undefined Behavior:** Using direct pointer casting (`*(uint32_t *)&my_float`) to inspect floating-point bit representations violates strict aliasing rules and triggers undefined behavior.
+- **Implementation-Defined:** Whether the target architecture adheres to IEEE 754 sign-exponent-mantissa bit layouts.
 
-## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+## Edge Cases and Failure Modes
+- **Mainframe Portability Failures:** Compiling code that relies on IEEE 754 bit-shifting hacks for fast math on IBM Z mainframes or older DSPs results in complete calculation corruption.
 
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+## Embedded Implications
+- **Specialized DSPs:** Certain digital signal processors use non-standard floating-point formats or custom fractional widths where IEEE 754 bit masks fail entirely.
+
+## Firmware Review Angle
+- **Ban Pointer Type Punning:** Flag all direct pointer casts between integers and floats; enforce `memcpy` for bit-level reinterpretation to comply with strict aliasing rules.
+
+## Compiler, ABI, and Toolchain Implications
+- **Optimizer Assumptions:** Compilers optimize floating-point code assuming standard IEEE 754 behavior unless strict conformance flags are enabled.
+
+## Performance, Memory, Timing, and Power
+- **Zero-Cost `memcpy`:** Compilers optimize `memcpy(&u, &f, 4)` into a single register move instruction, achieving bit-level reinterpretation with zero performance penalty and 100% standards compliance.
+
+## Verification / Debugging
+- **Sanitizers:** UndefinedBehaviorSanitizer catches strict aliasing violations resulting from illegal float-to-integer pointer casts.
+
+## Safety, Security, and Reliability
+- **Portability Assurance:** Restricting low-level bit hacks to explicit `memcpy` wrappers ensures code compiles and executes correctly across diverse CPU architectures.
+
+## Trade-offs and Alternatives
+- **Bit Hacks vs. Standard Math:** Use standard math library functions (`fabsf`, `frexp`, `ldexp`) instead of raw bit manipulation whenever possible to maintain platform independence.
+
+## Staff-Level Takeaway
+While 99% of modern hardware implements IEEE 754, ISO C does not require it. Never use direct pointer casting to inspect float bits; always use `memcpy` to satisfy strict aliasing rules and ensure maximum cross-platform robustness.
+
+## Related Concepts
+- [[00_Chapter_Index]]
+- [[01_Floating_types]]
+- [[06_NaN_and_infinity]]
+- [[../26_C_Lifetime_Aliasing/06_Strict_aliasing]]

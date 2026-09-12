@@ -1,44 +1,95 @@
-# Circular include avoidance
-
-> Canonical C topic note — chapter 21.
+# 09: Circular Include Avoidance
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Circular include avoidance**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+Circular inclusion occurs when two or more header files include each other directly or transitively (e.g., `a.h` includes `b.h`, which includes `a.h`). While include guards prevent infinite preprocessor recursion, circular includes cause premature evaluation failures where struct tags and typedefs are referenced before they have been declared.
 
-## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+## Scope and Boundaries
+Covers: Mutual dependencies, incomplete structure forward declarations, tag vs. typedef decoupling, and architectural refactoring.
+Does not cover: Linker circular symbol resolution.
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+## Why Does It Exist
+Real-world domain models frequently contain bidirectional relationships: a `Task` owns a `Timer`, and a `Timer` triggers a `Task`. If both header files include each other to access concrete struct layouts, the include guard of the first header terminates inclusion before types are declared, causing compile-time syntax errors.
 
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+## Mechanism and Language Rules
+1. **Forward Declaration of Struct Tags:** A pointer to a structure does NOT require the structure's full definition:
+   `struct Task;` forward-declares `struct Task` as an incomplete type.
+2. **Pointer Independence:** `sizeof(struct Task*)` is known to the compiler (4 or 8 bytes) regardless of the members inside `struct Task`.
+3. **Decoupling Rule:** Use forward declarations in headers whenever pointers are sufficient; move `#include` directives to implementation `.c` files.
 
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
-
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
+## Examples
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
+/* ================= BROKEN: Circular Include Deadlock ================= */
+/* task.h */
+#include "timer.h"
+typedef struct { Timer_t *timer; } Task_t;
+
+/* timer.h */
+#include "task.h"
+typedef struct { Task_t *task; } Timer_t;
+/* Whichever file is included first fails because the other's typedef isn't ready! */
+
+/* ================= RESOLVED: Forward Tag Declarations ================ */
+/* task.h */
+#ifndef TASK_H
+#define TASK_H
+
+/* Forward declaration of incomplete struct tag */
+struct Timer;
+
+typedef struct Task {
+    struct Timer *timer; /* Pointer to incomplete tag is 100% legal */
+    uint32_t      priority;
+} Task_t;
+
+#endif /* TASK_H */
+
+/* timer.h */
+#ifndef TIMER_H
+#define TIMER_H
+
+struct Task; /* Forward declaration */
+
+typedef struct Timer {
+    struct Task *owner_task;
+    uint32_t     timeout_ms;
+} Timer_t;
+
+#endif /* TIMER_H */
 ```
 
-## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+## Undefined, Unspecified, and Implementation-Defined Behavior
+- Attempting to evaluate `sizeof` or access members of a forward-declared incomplete struct before its definition is a compile-time constraint violation.
 
-## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+## Edge Cases and Failure Modes
+- **Typedef Forward Declaration Trap:** Prior to C11, forward-declaring a typedef alias twice caused compilation failure. In modern C11, benign typedef redefinitions are permitted: `typedef struct Task Task;`.
+- **Value Containment:** Forward declarations ONLY work for pointers (`struct T *`). If a struct embeds another struct *by value* (`struct T val;`), the full definition MUST be included.
 
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+## Embedded Implications
+- Intrusive data structures (e.g., FreeRTOS `TCB_t` and `ListItem_t`) use forward struct tag declarations extensively to maintain mutual references without header deadlock.
+
+## Firmware Review Angle
+- When circular dependencies appear, immediately check: Can `#include "other.h"` in the header be replaced with `struct Other;`?
+- Reserve concrete `#include` directives for the `.c` implementation files where members are dereferenced.
+
+## Compiler, ABI, and Toolchain Implications
+- Forward declarations keep compilation units isolated and reduce the preprocessor token load across large build trees.
+
+## Performance, Memory, Timing, and Power
+- Zero runtime impact.
+
+## Verification / Debugging
+- GCC/Clang emit `"error: unknown type name"` or `"error: field has incomplete type"` when circular include deadlocks occur.
+
+## Safety, Security, and Reliability
+- Clean, acyclic header structures eliminate compiler warning cascades and improve static analyzer accuracy.
+
+## Trade-offs and Alternatives
+- **Forward Declaration vs Common Types Header:** If multiple headers share common types, extract the shared types into a standalone `types.h` header included by both.
+
+## Staff-Level Takeaway
+Never let headers deadlock in circular includes. If a header only uses pointers to an external struct, forward-declare the tag (`struct Foo;`) and defer the `#include` to the `.c` file. For shared types, extract them into an independent lower-level header.
+
+## Related Concepts
+- `03_Include_guards`
+- `07_Header_self_sufficiency`
+- `08_Dependency_direction`

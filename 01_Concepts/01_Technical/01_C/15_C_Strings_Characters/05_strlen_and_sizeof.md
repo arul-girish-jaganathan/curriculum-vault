@@ -1,44 +1,107 @@
-# strlen and sizeof
-
-> Canonical C topic note — chapter 15.
+# 05: Strlen and Sizeof
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **strlen and sizeof**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+`sizeof` is a compile-time unary operator that evaluates the total memory allocation size of an object or type in bytes. `strlen` is a runtime standard library function (defined in `<string.h>`) that calculates the number of characters in a null-terminated string, excluding the terminating null character.
 
-## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+## Scope and Boundaries
+*   **Covers:** Semantic distinctions, compile-time evaluation vs. runtime traversal, performance profiles, and interaction with decayed pointers.
+*   **Does not cover:** General array sizeof rules (see [[14_C_Arrays_VLA/10_sizeof_arrays]]), pointer sizeof (see [[13_C_Pointers/01_Pointer_declarations]]), or custom bounded length routines (`strnlen`).
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+## Why Does It Exist
+Software needs to differentiate between buffer capacity and content length:
+*   **Capacity (`sizeof`):** How much memory is allocated and available for storage.
+*   **Content Length (`strlen`):** How much valid character data is currently stored in that memory.
+*   **Algorithmic Correctness:** Confusing capacity with content length leads to buffer overflows or premature string truncation.
 
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+## Mechanism and Language Rules
+1.  **`sizeof` Operator:**
+    *   Evaluated entirely at compile time (except for VLAs).
+    *   Returns total allocated storage in bytes (`size_t`).
+    *   When applied to a string literal `"abc"`, `sizeof("abc") == 4` (includes `\0`).
+    *   When applied to an array `char a[10] = "abc"`, `sizeof(a) == 10`.
+    *   When applied to a decayed pointer `char *p`, `sizeof(p) == sizeof(char *)` (4 or 8 bytes).
+2.  **`strlen` Function:**
+    *   Evaluated at runtime via sequential memory traversal.
+    *   Returns the number of characters preceding the first `'\0'`.
+    *   `strlen("abc") == 3` (excludes `\0`).
+3.  **Return Type:** Both yield results of type `size_t`.
 
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+## Examples
 
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
 ```c
 /* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
+#include <string.h>
+#include <stddef.h>
+
+static void example_diff(void)
 {
-    return x;
+    char buffer[32] = "System";
+
+    size_t allocated_capacity = sizeof(buffer); /* 32 bytes (compile-time) */
+    size_t payload_length    = strlen(buffer); /* 6 bytes  (runtime) */
+
+    (void)allocated_capacity;
+    (void)payload_length;
 }
 ```
 
-## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+## Undefined, Unspecified, and Implementation-Defined Behavior
+*   **Undefined Behavior:** Passing an uninitialized or non-null-terminated character array to `strlen`.
+*   **Compile-Time Optimization:** Modern compilers replace `strlen("constant_literal")` with a constant integer at compile time, provided no side effects exist.
 
-## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+## Edge Cases and Failure Modes
+*   **The Decayed Buffer Sizing Bug:**
+    ```c
+    void process(const char buffer[64]) {
+        size_t cap = sizeof(buffer); /* BUG: cap is 4 or 8 (pointer size), NOT 64! */
+    }
+    ```
+*   **Off-By-One Allocation:** Sizing dynamic memory using `malloc(strlen(s))` instead of `malloc(strlen(s) + 1)`, omitting space for the null terminator.
+*   **Calling `strlen` in Loop Conditions:**
+    ```c
+    for (size_t i = 0; i < strlen(str); ++i) { ... } /* $O(N^2)$ algorithmic complexity! */
+    ```
 
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+## Embedded Implications
+*   **Watchdog / Latency Traps:** Calling `strlen` on large buffers inside a tight polling loop re-traverses memory on every iteration ($O(N^2)$), causing execution starvation and triggering watchdog resets.
+*   **Bounded String Length (`strnlen`):** Embedded firmware should always prefer `strnlen(str, MAX_LEN)` over unbounded `strlen` to guarantee bounded execution time and prevent out-of-bounds reads on corrupted buffers.
+
+## Firmware Review Angle
+1.  **Check `strlen` Loop Conditions:** Hoist `strlen` calls outside of loop conditions into an immutable local variable.
+2.  **Audit Memory Allocations:** Ensure any buffer allocation based on `strlen` explicitly adds `+ 1` for the null terminator.
+3.  **Verify `sizeof` on Function Parameters:** Reject code using `sizeof(param)` where `param` is a decayed character array.
+
+## Compiler, ABI, and Toolchain Implications
+*   **Intrinsic Inlining:** Compilers replace `strlen` with target-specific SIMD instructions (e.g., ARM NEON `VLD`/`VCEQ`) or unrolled word-at-a-time null-byte check algorithms.
+*   **Zero Cost for `sizeof`:** `sizeof` generates zero machine instructions; it is an immediate constant in the assembly output.
+
+## Performance, Memory, Timing, and Power
+*   **Execution Latency:** `sizeof` takes 0 cycles. `strlen` takes $O(N)$ cycles, loading memory lines and consuming bus energy.
+*   **Power Consumption:** Frequent unbounded memory scans increase memory bus activity, raising dynamic power draw on low-power battery systems.
+
+## Verification / Debugging
+*   **Compiler Warnings:** Use `-Wsizeof-array-argument -Wstringop-overread`.
+*   **Static Analysis:** Analyzers flag redundant `strlen` evaluations within loop bodies.
+
+## Safety, Security, and Reliability
+*   **MISRA C:2012 Compliance:**
+    *   *Rule 21.17:* String functions shall not result in buffer overflow or unhandled non-terminated arrays.
+*   **Security Vulnerabilities:**
+    *   CWE-131: Incorrect Calculation of Buffer Size (forgetting `+ 1`).
+    *   CWE-400: Uncontrolled Resource Consumption (quadratic `strlen` loops).
+
+## Trade-offs and Alternatives
+*   **`strlen` vs. `strnlen`:** Always use `strnlen(s, maxlen)` in embedded systems to enforce a hard upper bound on memory traversal.
+*   **String Objects / Spans:** Storing the length alongside the pointer eliminates `strlen` calls entirely, converting $O(N)$ traversals into $O(1)$ scalar reads.
+
+## Staff-Level Takeaway
+`sizeof` measures container capacity at compile time; `strlen` measures payload content at runtime. Staff engineers must mandate `strnlen` over unbounded `strlen`, ensure `+ 1` allocation rules are universally followed, and hoist string length evaluations out of loop predicates to prevent accidental $O(N^2)$ algorithmic disasters.
+
+## Related Concepts
+*   [[03_String_literals]]
+*   [[04_Null_termination]]
+*   [[11_Buffer_sizing]]
+*   [[14_C_Arrays_VLA/10_sizeof_arrays]]
+
+---
+*Related: [[00_Chapter_Index]], [[../00_Complete_Topic_Map]]*

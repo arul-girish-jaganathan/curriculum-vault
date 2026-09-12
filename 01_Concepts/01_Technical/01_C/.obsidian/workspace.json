@@ -1,0 +1,223 @@
+{
+  "main": {
+    "id": "fbb47feec8f5f27f",
+    "type": "split",
+    "children": [
+      {
+        "id": "c71de51ba1a3e060",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "f850f334ef2557ab",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "27_C_Alignment_Object_Representation/03_Alignas.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "03_Alignas"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "2b6616cee4c11296",
+    "type": "split",
+    "children": [
+      {
+        "id": "df1349cd8d35cca8",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "02163c2950fe67bb",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Files"
+            }
+          },
+          {
+            "id": "706c4e3473fa15a1",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Search"
+            }
+          },
+          {
+            "id": "e35316250ec1a0c5",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-bookmark",
+              "title": "Bookmarks"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "d803fe75bcd73795",
+    "type": "split",
+    "children": [
+      {
+        "id": "80bd634cfc9e7494",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "7d1904e0f688c36e",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "27_C_Alignment_Object_Representation/03_Alignas.md",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Backlinks"
+            }
+          },
+          {
+            "id": "259952c869d74bdd",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "27_C_Alignment_Object_Representation/03_Alignas.md",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Outgoing links"
+            }
+          },
+          {
+            "id": "d841fd082c27e275",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Tags"
+            }
+          },
+          {
+            "id": "a1bdd7ca6e0cce47",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "All properties"
+            }
+          },
+          {
+            "id": "5cf89601e0163110",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "27_C_Alignment_Object_Representation/03_Alignas.md",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Outline"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Open quick switcher": false,
+      "graph:Open graph view": false,
+      "canvas:Create new canvas": false,
+      "daily-notes:Open today's daily note": false,
+      "templates:Insert template": false,
+      "command-palette:Open command palette": false,
+      "bases:Create new base": false
+    }
+  },
+  "active": "f850f334ef2557ab",
+  "lastOpenFiles": [
+    "26_C_Lifetime_Aliasing/06_Strict_aliasing.md",
+    "26_C_Lifetime_Aliasing/03_Dangling_pointers.md",
+    "25_C_Dynamic_Memory/01_malloc.md",
+    "25_C_Dynamic_Memory/04_free.md",
+    "24_C_Threads_C11/12_Thread_safe_module_design.md",
+    "24_C_Threads_C11/01_thrd_create.md",
+    "24_C_Threads_C11/05_Mutexes.md",
+    "13_C_Pointers/05_void_pointers.md",
+    "16_C_Struct_Union_Enum/04_Structure_assignment.md",
+    "16_C_Struct_Union_Enum/01_Structure_layout.md",
+    "23_C_Memory_Model/12_Memory_model_debugging.md",
+    "23_C_Memory_Model/02_Data_races.md",
+    "23_C_Memory_Model/03_Happens_before.md",
+    "22_C_Concurrency_Atomics/09_Atomic_flags.md",
+    "21_C_Headers_APIs_TU/03_Include_guards.md",
+    "21_C_Headers_APIs_TU/02_Private_headers.md",
+    "20_C_Macros/09_Token_pasting_macros.md",
+    "19_C_Preprocessor/01_File_inclusion.md",
+    "19_C_Preprocessor/09_Pragma.md",
+    "16_C_Struct_Union_Enum/03_Nested_structures.md",
+    "15_C_Strings_Characters/11_Buffer_sizing.md",
+    "15_C_Strings_Characters/08_Tokenization.md",
+    "15_C_Strings_Characters/04_Null_termination.md",
+    "15_C_Strings_Characters/03_String_literals.md",
+    "15_C_Strings_Characters/00_Chapter_Index.md",
+    "15_C_Strings_Characters/06_String_copying.md",
+    "15_C_Strings_Characters/15_C_Strings_Characters_obsidian.zip",
+    "14_C_Arrays_VLA/14_C_Arrays_VLA_obsidian.zip",
+    "12_C_Functions/12_C_Functions_obsidian.zip"
+  ]
+}

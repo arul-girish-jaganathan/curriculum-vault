@@ -1,44 +1,73 @@
-# Lifetime-safe APIs
-
-> Canonical C topic note — chapter 26.
+# 11: Lifetime Safe APIs
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Lifetime-safe APIs**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+Lifetime Safe APIs are architectural design patterns in C that prevent dangling pointers, use-after-free bugs, and double frees by encoding clear ownership, borrowing, and lifecycle contracts directly into function signatures and module structures.
 
-## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+## Scope and Boundaries
+- **Covers:** Ownership transfer contracts, opaque handles, reference counting, and destructor patterns.
+- **Does not cover:** Automatic garbage collection or compiler-enforced borrow checkers (like Rust).
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+## Why Does It Exist
+C lacks automated memory management and lifetime checking. Without disciplined API design, callers easily mismanage allocations, leading to memory corruption. Lifetime safe APIs establish clear boundaries for who allocates, who uses, and who destroys resources.
 
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+## Mechanism and Language Rules
+1. **Opaque Pointers (Pimpl Idiom):** Hide implementation structs behind incomplete types to prevent direct client manipulation.
+2. **Explicit Creator/Destructor Pairs:** Every `module_create()` must have a corresponding `module_destroy()`.
+3. **Ownership Transfer Documentation:** Clearly document whether a function borrows a pointer (caller retains ownership) or consumes a pointer (ownership transfers to the callee).
 
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
-
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
+## Examples
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
+/* ==================== safe_parser.h ==================== */
+#ifndef SAFE_PARSER_H
+#define SAFE_PARSER_H
+
+typedef struct parser parser_t;
+
+/* Allocates and returns owned parser handle */
+parser_t *parser_create(const char *data, size_t len);
+
+/* Consumes parser handle and frees all associated resources */
+void parser_destroy(parser_t *parser);
+
+/* Borrows parser handle; does not take ownership */
+int parser_next_token(parser_t *parser, char *out_buf, size_t max_len);
+
+#endif
 ```
 
-## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+## Undefined, Unspecified, and Implementation-Defined Behavior
+- **Undefined Behavior:** Passing a destroyed parser handle to `parser_next_token` (use-after-free) or failing to call `parser_destroy` (memory leak).
 
-## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+## Edge Cases and Failure Modes
+- **Ownership Ambiguity:** Functions that conditionally take ownership based on return codes lead to double frees or memory leaks if callers misunderstand the contract.
 
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+## Embedded Implications
+- **Deterministic Resource Limits:** Lifetime safe APIs ensure all buffers and contexts are explicitly allocated at startup and destroyed predictably during shutdown, preventing runtime fragmentation.
+
+## Firmware Review Angle
+- **Verify Destructor Coverage:** Every creation function must be paired with an audit-verified destruction path.
+- **Check Parameter Documentation:** Enforce comments specifying `[in]`, `[out]`, `[borrowed]`, or `[owned]` ownership semantics on all pointer arguments.
+
+## Compiler, ABI, and Toolchain Implications
+- **Opaque Structs:** Incomplete type declarations prevent client code from calculating struct offsets, ensuring complete encapsulation.
+
+## Performance, Memory, Timing, and Power
+- **Zero Runtime Cost:** API design patterns introduce zero CPU overhead while eliminating entire classes of memory bugs.
+
+## Verification / Debugging
+- **Valgrind / ASan Integration:** Test API suites under memory sanitizers to verify that create/destroy cycles leave zero memory leaks.
+
+## Safety, Security, and Reliability
+- **Robustness:** Structured lifecycle contracts prevent memory corruption vulnerabilities in long-running embedded systems.
+
+## Trade-offs and Alternatives
+- **Opaque Handles vs. Direct Structs:** Opaque handles improve encapsulation and safety at the cost of requiring function calls for field access.
+
+## Staff-Level Takeaway
+In C, safety is an API design choice. Enforce strict ownership transfer rules, opaque handles, and clear creator/destructor pairings to make misuse difficult and correct usage natural.
+
+## Related Concepts
+- [[00_Chapter_Index]]
+- [[01_Object_lifetime]]
+- [[04_Use_after_free]]
+- [[../24_C_Threads_C11/12_Thread_safe_module_design]]

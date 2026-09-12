@@ -1,44 +1,93 @@
-# DMA alignment
-
-> Canonical C topic note — chapter 27.
+# 10: DMA Alignment
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **DMA alignment**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+DMA (Direct Memory Access) alignment refers to the strict hardware memory address and size constraints imposed by DMA controllers on source and destination buffers. Because DMA controllers transfer data directly across the system bus without CPU intervention, buffers must meet exact hardware alignment requirements (typically 4-byte, 32-byte, or cache-line boundaries) to prevent transfer corruption or bus faults.
 
-## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+## Scope and Boundaries
+- **Covers:** Peripheral DMA constraints, buffer alignment, cache coherence interaction, and scatter-gather lists.
+- **Does not cover:** General CPU alignment ([[01_Alignment_requirements]]), dynamic memory allocation, or cache line optimizations ([[11_Cache_line_alignment]]).
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+## Why Does It Exist
+DMA hardware operates independently of CPU memory management units:
+- **Bus Width Requirements:** High-speed DMA engines (Ethernet MAC, USB PHY, SDMMC) require memory addresses to align with bus transfer widths (e.g., 32-bit or 64-bit words). Unaligned DMA addresses trigger hardware error interrupts or corrupted data transfers.
+- **Cache Coherency Interaction:** If a DMA buffer resides in a cached memory region, CPU cache lines and physical RAM can fall out of sync, requiring explicit cache cleaning/invalidating around DMA transfers.
 
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+## Mechanism and Language Rules
+- **Static Alignment:** Buffers destined for DMA must be declared using `alignas()` matching the peripheral controller requirement.
+- **Heap Alignment:** Dynamic buffers for DMA must be allocated using aligned allocators (`aligned_alloc`), never standard `malloc` if standard `malloc` does not guarantee required peripheral alignment.
 
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
-
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
+## Examples
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
+#include <stdio.h>
+#include <stdalign.h>
+#include <stdint.h>
+#include <string.h>
+
+#define DMA_BUFFER_SIZE 512
+#define DMA_ALIGNMENT   32
+
+/* Statically allocate a DMA-safe buffer aligned to 32 bytes */
+alignas(32) static uint8_t dma_tx_buffer[DMA_BUFFER_SIZE];
+alignas(32) static uint8_t dma_rx_buffer[DMA_BUFFER_SIZE];
+
+void configure_dma_transfer(const uint8_t *src, size_t len) 
 {
-    return x;
+    if ((uintptr_t)src % DMA_ALIGNMENT != 0) {
+        printf("Error: Source buffer is not DMA aligned!\n");
+        return;
+    }
+    
+    if (len > DMA_BUFFER_SIZE) {
+        printf("Error: Transfer size exceeds buffer capacity.\n");
+        return;
+    }
+
+    memcpy(dma_tx_buffer, src, len);
+    printf("DMA buffers verified and prepared for transfer.\n");
+}
+
+int main(void) 
+{
+    alignas(32) uint8_t sample_data[64] = "Hello DMA Hardware!";
+    configure_dma_transfer(sample_data, sizeof(sample_data));
+    return 0;
 }
 ```
 
-## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+## Undefined, Unspecified, and Implementation-Defined Behavior
+- **Hardware Bus Fault:** Passing an unaligned buffer pointer to a DMA controller register causes hardware bus faults, silent data corruption, or peripheral lockup.
 
-## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+## Edge Cases and Failure Modes
+- **Stack-Allocated DMA Buffers:** Passing automatic stack variables to DMA controllers is extremely dangerous because stack frames can be misaligned or overwritten by concurrent function calls during active DMA transfers.
+- **Cache Coherency Mismatch:** CPU modifies a cached variable, but DMA reads stale data directly from RAM because the cache line was not flushed.
 
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+## Embedded Implications
+- **Cortex-M / RISC-V DMA:** On ARM Cortex-M microcontrollers, DMA buffers must often reside in non-cached SRAM regions (e.g., SRAM1/SRAM2) or require explicit CMSIS cache maintenance functions (`SCB_CleanDCache_by_Addr`, `SCB_InvalidateDCache_by_Addr`).
+
+## Firmware Review Angle
+- **Audit DMA Buffer Declarations:** Verify that all buffers passed to DMA peripherals are statically over-aligned using `alignas()` or allocated via aligned heap allocators.
+- **Check Cache Maintenance:** Ensure proper cache cleaning/invalidating operations surround all active DMA operations in cached architectures (Cortex-A/R).
+
+## Compiler, ABI, and Toolchain Implications
+- **Linker Sections:** DMA buffers are often placed in specialized linker sections (`.dma_buffer`) mapped to specific physical memory banks.
+
+## Performance, Memory, Timing, and Power
+- **Zero CPU Load:** Properly aligned DMA transfers offload data movement entirely from the CPU to dedicated hardware DMA channels, maximizing power efficiency and throughput.
+
+## Verification / Debugging
+- **Debugger Memory Inspector:** Verify buffer addresses in GDB before initiating DMA transactions to ensure lower bits are zero (`addr % alignment == 0`).
+
+## Safety, Security, and Reliability
+- **Reliability:** DMA alignment errors are among the most pernicious intermittent bugs in embedded firmware, causing silent data corruption under heavy network/storage loads.
+
+## Trade-offs and Alternatives
+- **CPU Polled I/O vs. DMA:** CPU polled I/O requires zero alignment constraints but consumes 100% CPU cycles and stalls execution; DMA requires strict alignment and cache management but delivers maximum throughput.
+
+## Staff-Level Takeaway
+DMA alignment is an absolute hardware mandate. Never assume standard `malloc` or stack arrays meet peripheral DMA alignment rules. Always enforce static over-alignment (`alignas`) or use dedicated aligned allocation pools for all DMA transactions.
+
+## Related Concepts
+- [[00_Chapter_Index]]
+- [[01_Alignment_requirements]]
+- [[03_Alignas]]
+- [[11_Cache_line_alignment]]

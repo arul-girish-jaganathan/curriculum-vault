@@ -1,44 +1,88 @@
-# Ownership contracts
-
-> Canonical C topic note — chapter 25.
+# 08: Ownership Contracts
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Ownership contracts**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+Ownership contracts represent the explicit architectural agreements within a C codebase defining which module, function, or thread is responsible for freeing dynamically allocated memory and managing its lifecycle.
 
-## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+## Scope and Boundaries
+- **Covers:** Transfer of ownership, caller-frees vs. callee-frees contracts, API documentation standards, and lifetime boundary enforcement.
+- **Does not cover:** Garbage collection or automatic scope-based lifetime management (`[[../26_C_Lifetime_Aliasing/01_Object_lifetime]]`).
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+## Why Does It Exist
+C has no compiler-enforced ownership model (unlike Rust's borrow checker):
+- **Memory Leak Prevention:** Without clear ownership contracts, developers either leak memory (neither side frees it) or corrupt the heap (both sides attempt to free it).
+- **API Clarity:** Explicitly documenting whether a function takes ownership of an incoming pointer or returns a newly owned pointer is vital for maintainable software architecture.
 
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+## Mechanism and Language Rules
+- **Caller-Frees Contract:** The function receives a pointer or returns data pointing to caller-owned storage; the caller retains full responsibility for deallocation.
+- **Callee-Frees (Transfer of Ownership) Contract:** The function takes ownership of an incoming pointer (e.g., inserting it into a data structure) and becomes responsible for eventually freeing it. Alternatively, a function allocates and returns a new heap object, transferring ownership to the caller.
+- **Documentation Conventions:** Explicitly state ownership transfer semantics in header file comments (e.g., `/* Caller must free returned pointer */`).
 
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
-
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
+## Examples
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+typedef struct {
+    char *config_string;
+} parser_t;
+
+/* CONTRACT: Returns a newly allocated string. 
+   OWNERSHIP TRANSFER: Caller assumes full ownership and must free the returned pointer. */
+char *parser_extract_version(const char *raw_data) 
 {
-    return x;
+    char *version = malloc(16);
+    if (!version) {
+        return NULL;
+    }
+    snprintf(version, 16, "v1.4.2");
+    return version; /* Ownership transferred to caller */
+}
+
+/* CONTRACT: Takes ownership of 'config' pointer. 
+   The parser now owns it and will free it during parser_destroy(). */
+void parser_set_config(parser_t *parser, char *config) 
+{
+    free(parser->config_string); /* Free previous if any */
+    parser->config_string = config; /* Ownership transferred to parser */
 }
 ```
 
-## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+## Undefined, Unspecified, and Implementation-Defined Behavior
+- **Undefined Behavior (Double Ownership / Double Free):** When two modules assume they both own and must free the same pointer, a double-free bug occurs.
+- **Undefined Behavior (Orphaned Memory):** When neither module frees a pointer under the mistaken assumption the other owned it, a permanent memory leak occurs.
 
-## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+## Edge Cases and Failure Modes
+- **Partial Failure Ownership Loss:** If a compound initialization function allocates three sub-buffers and fails on the fourth, its cleanup routine must correctly free the prior three. If ownership was prematurely transferred during allocation, cleanup becomes ambiguous.
 
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+## Embedded Implications
+- **Firmware Module Boundaries:** Device drivers and middleware layers must establish strict ownership contracts for packet buffers passed across interrupt-to-task queues to prevent buffer leaks.
+
+## Firmware Review Angle
+- **Audit API Headers:** Inspect all header files for clear comment annotations detailing ownership contracts on pointer parameters and return values.
+- **Trace Pointer Lifecycles:** Follow dynamic pointers across module boundaries to verify single, unambiguous ownership at all times.
+
+## Compiler, ABI, and Toolchain Implications
+- **Static Analysis Annotations:** Use compiler attributes (e.g., `__attribute__((malloc))`, `__attribute__((cleanup(...)))`) to help static analyzers verify ownership and scope-based cleanup.
+
+## Performance, Memory, Timing, and Power
+- **Zero Runtime Overhead:** Ownership contracts are purely conceptual and architectural guidelines enforced through discipline and tooling; they add zero CPU instructions at runtime.
+
+## Verification / Debugging
+- **Memory Leak Detectors:** Tools like ASan, LeakSanitizer (LSan), and Valgrind verify whether allocated objects are eventually reclaimed by their designated owners.
+
+## Safety, Security, and Reliability
+- **Architectural Integrity:** Clear ownership boundaries eliminate entire classes of memory leaks, use-after-free bugs, and double-free vulnerabilities in complex systems.
+
+## Trade-offs and Alternatives
+- **Manual Ownership Contracts vs. Reference Counting:** Manual contracts are lightweight and standard in C; reference counting adds metadata overhead and atomic synchronization costs.
+
+## Staff-Level Takeaway
+In C, memory safety is entirely a function of architectural discipline. Every pointer passed across an API boundary must have an unambiguous, documented ownership contract. If you allocate it, explicitly define who owns it and who kills it.
+
+## Related Concepts
+- [[00_Chapter_Index]]
+- [[04_free]]
+- [[07_Allocation_failure]]
+- [[../26_C_Lifetime_Aliasing/01_Object_lifetime]]
+- [[../26_C_Lifetime_Aliasing/11_Lifetime_safe_API]]

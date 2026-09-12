@@ -1,44 +1,86 @@
-# Structure layout
-
-> Canonical C topic note — chapter 16.
+# 01: Structure Layout
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Structure layout**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+Structure layout refers to the physical arrangement of structure members in linear memory. In ISO C, members are allocated in declaration order with monotonically increasing addresses. Compilers insert padding bytes between members (internal padding) and after the final member (trailing padding) to satisfy the natural alignment constraints of each individual member and the structure as a whole.
 
-## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+## Scope and Boundaries
+Covers: Member ordering, natural alignment constraints, internal padding, trailing padding, `sizeof` calculation, and `offsetof` macro.
+Does not cover: Dynamic packing pragmas (see `12_Protocol_and_register_layouts`), flexible array members (see `06_Flexible_array_members`), or bitfields (see `02_Structure_members`).
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+## Why Does It Exist
+Modern microprocessors (especially 32-bit and 64-bit architectures like ARM Cortex-M, RISC-V, and x86) access memory across specific bus boundaries (2, 4, 8 bytes). Unaligned memory accesses can cause CPU hard faults, bus pipeline stalls, or require multiple bus cycles. Structure padding ensures that every member begins at an address satisfying its architecture-mandated natural alignment while maintaining an aggregate alignment suitable for contiguous array indexing.
 
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+## Mechanism and Language Rules
+1. **Monotonic Order:** ISO C requires `&(s.member_b) > &(s.member_a)` if `member_b` is declared after `member_a`.
+2. **First Member Address:** The address of the first member equals the address of the structure itself (`(void *)&s == (void *)&(s.first_member)`). There is no leading padding.
+3. **Internal Padding:** Bytes inserted between members to align the subsequent member to a multiple of its natural alignment `alignof(T)`.
+4. **Trailing Padding:** Bytes inserted after the last member so that `sizeof(struct S)` is an exact integer multiple of the structure's overall alignment (`max(alignof(member))`). This guarantees array elements `arr[i]` maintain correct alignment.
+5. **Offsetof Macro:** `<stddef.h>` defines `offsetof(type, member)`, returning the byte offset of a member from the start of the structure as a `size_t`.
 
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
-
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
+## Examples
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
+#include <stddef.h>
+#include <stdint.h>
+#include <assert.h>
+
+/* Naive layout: 12 bytes on a 32-bit architecture */
+struct NaiveLayout {
+    uint8_t  flag;     /* Offset 0, size 1, 3 padding bytes */
+    uint32_t counter;  /* Offset 4, size 4 */
+    uint16_t id;       /* Offset 8, size 2, 2 trailing padding bytes */
+};
+
+/* Optimized layout: 8 bytes on a 32-bit architecture */
+struct OptimizedLayout {
+    uint32_t counter;  /* Offset 0, size 4 */
+    uint16_t id;       /* Offset 4, size 2 */
+    uint8_t  flag;     /* Offset 6, size 1, 1 trailing padding byte */
+};
+
+static_assert(sizeof(struct NaiveLayout) == 12, "Unexpected NaiveLayout size");
+static_assert(sizeof(struct OptimizedLayout) == 8, "Unexpected OptimizedLayout size");
+static_assert(offsetof(struct OptimizedLayout, id) == 4, "Offset mismatch");
 ```
 
-## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+## Undefined, Unspecified, and Implementation-Defined Behavior
+- **Padding Contents:** The byte values of padding areas are indeterminate and unspecified. Two structs containing identical member values are not guaranteed to match byte-for-byte under `memcmp`.
+- **Implementation Alignment:** The specific natural alignment requirements for standard types are implementation-defined by the Target ABI.
 
-## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+## Edge Cases and Failure Modes
+- **Memcmp False Negatives:** Using `memcmp(&a, &b, sizeof(struct S))` to test equality will yield false negatives because indeterminate padding bytes may differ.
+- **Array Stride Bloat:** Poor member ordering causes trailing padding that multiplies across large array allocations, exhausting constrained SRAM.
 
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+## Embedded Implications
+- **SRAM Exhaustion:** In bare-metal systems with 16KB-64KB SRAM, unoptimized struct ordering in tables/pools can silently waste 20-40% of available memory on padding.
+- **Bus Faults:** Mapping an unpadded struct over hardware registers or packed wire packets without explicit packing attributes triggers misalignment faults.
+
+## Firmware Review Angle
+- **Reorder by Decreasing Alignment:** Order fields from largest alignment requirement to smallest (e.g., `uint64_t` -> `uint32_t` -> `uint16_t` -> `uint8_t`) to eliminate internal padding.
+- **Enforce `static_assert`:** Require static assertions on `sizeof` and `offsetof` for any structure interacting with DMA, IPC, or external storage.
+
+## Compiler, ABI, and Toolchain Implications
+- ARM AAPCS requires aggregate alignment equal to the maximum alignment of its members.
+- LTO cannot reorder structure fields; the C standard forbids compiler reordering of struct fields.
+
+## Performance, Memory, Timing, and Power
+- Optimal alignment enables single-cycle 32-bit load/store instructions (`LDR`/`STR`).
+- Reduced memory footprint improves L1 data cache line utilization and reduces flash/RAM power consumption.
+
+## Verification / Debugging
+- Use compiler flags `-Wpadded` to detect unexpected padding insertion.
+- In GDB: `ptype /o struct OptimizedLayout` displays offsets and hole sizes.
+
+## Safety, Security, and Reliability
+- **Information Leak (CWE-200):** Copying an uninitialized struct to an external interface (network, user space, flash) leaks raw stack/heap data contained in padding bytes. Always `memset` before exporting.
+- MISRA C:2012 Rule 19.2 advises strict awareness of overlapping/padded types.
+
+## Trade-offs and Alternatives
+- **Manual Ordering vs Packed:** Reordering fields preserves natural alignment and execution speed without incurring the bus-penalty or compiler code-bloat of `__attribute__((packed))`.
+
+## Staff-Level Takeaway
+Never rely on visual inspection to determine struct size. Reorder fields by descending alignment size and lock critical layouts with compile-time assertions (`_Static_assert`). Treat padding bytes as security liabilities.
+
+## Related Concepts
+- `00_Chapter_Index`
+- `02_Structure_members`
+- `12_Protocol_and_register_layouts`

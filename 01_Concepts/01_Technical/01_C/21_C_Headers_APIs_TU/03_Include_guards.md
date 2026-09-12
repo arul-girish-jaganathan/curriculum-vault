@@ -1,44 +1,76 @@
-# Include guards
-
-> Canonical C topic note — chapter 21.
+# 03: Include Guards
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Include guards**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+Include guards are conditional preprocessor directives wrapping the contents of a header file to ensure its declarations are parsed at most once within any single translation unit. This maintains header idempotency and prevents compiler redeclaration errors.
 
-## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+## Scope and Boundaries
+Covers: Standard `#ifndef` guards, `#pragma once`, Multiple-Include Optimization (MIOpt), and collision prevention.
+Does not cover: Linker symbol resolution (see `05_Definition_ownership`).
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+## Why Does It Exist
+Because headers include other headers in complex dependency trees, a shared header (like `stdint.h` or `error_codes.h`) is inevitably encountered multiple times while compiling a single `.c` file. Without include guards, redefinition of typedefs, structs, and enums causes compilation failure.
 
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+## Mechanism and Language Rules
+1. **Classical Guard Idiom:**
+   ```c
+   #ifndef NAMESPACE_SUBSYSTEM_HEADER_H
+   #define NAMESPACE_SUBSYSTEM_HEADER_H
+   /* Declarations */
+   #endif /* NAMESPACE_SUBSYSTEM_HEADER_H */
+   ```
+2. **Multiple-Include Optimization (MIOpt):** Compilers record headers that have no code outside the `#ifndef` wrapper and bypass re-opening the physical file on subsequent `#include` directives.
+3. **`#pragma once`:** Supported by virtually all modern C compilers (GCC, Clang, IAR, Arm Compiler 6), it provides identical functionality with lower boilerplate.
 
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
-
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
+## Examples
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
+/* ================= File: drv_sensor_types.h ================= */
+#ifndef DRV_SENSOR_TYPES_H
+#define DRV_SENSOR_TYPES_H
+
+#include <stdint.h>
+
+typedef struct {
+    int16_t x;
+    int16_t y;
+    int16_t z;
+} AccelRawData_t;
+
+#endif /* DRV_SENSOR_TYPES_H */
 ```
 
-## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+## Undefined, Unspecified, and Implementation-Defined Behavior
+- `#pragma once` is implementation-defined by ISO C, though universally supported in production embedded compilers.
 
-## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+## Edge Cases and Failure Modes
+- **Macro Name Collisions:** Using generic guard names (`#ifndef SENSOR_H`) across different directories leads to silent suppression of the second header, resulting in missing types.
+- **Tokens Outside Guard:** Comments or whitespace outside the `#ifndef` block are fine, but stray code tokens disable compiler MIOpt optimizations.
 
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+## Embedded Implications
+- In large firmware projects with thousands of source files, MIOpt-compliant guards reduce compilation times by up to 40% on build servers.
+
+## Firmware Review Angle
+- Confirm guard macro names include full subsystem prefixes (`PROJECT_SUBSYS_MODULE_H`).
+- Reject any header lacking include guards or `#pragma once`.
+
+## Compiler, ABI, and Toolchain Implications
+- Both `#ifndef` guards and `#pragma once` are resolved entirely in Translation Phase 4; they produce zero object code.
+
+## Performance, Memory, Timing, and Power
+- Zero runtime footprint. Reduces developer build-and-test cycle times.
+
+## Verification / Debugging
+- Use `gcc -H` to verify headers are not redundantly re-parsed.
+
+## Safety, Security, and Reliability
+- MISRA C:2012 Directive 4.10: Precautions shall be taken in order to prevent the contents of a header file being included more than once.
+
+## Trade-offs and Alternatives
+- **Guard Macros vs `#pragma once`:** Modern practice recommends `#pragma once` followed by standard `#ifndef` guards for guaranteed cross-toolchain portability.
+
+## Staff-Level Takeaway
+Never write a header without idempotency protection. Use standardized, fully qualified guard macros to prevent collisions and keep build-time compilation overhead minimal.
+
+## Related Concepts
+- `01_Public_headers`
+- `07_Header_self_sufficiency`
+- `09_Circular_include_avoidance`

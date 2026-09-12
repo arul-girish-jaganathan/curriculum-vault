@@ -1,24 +1,23 @@
-# Lifetime, Effective Type and Aliasing
+# 26_C_Lifetime_Aliasing: Chapter Index
 
-## Chapter purpose
-A deep-reference chapter in the C language knowledge base. Use it to understand the rule, reason about compiler and ABI effects, and apply it safely in embedded firmware.
+## Overview
+Chapter 26 explores the foundational rules governing memory lifetimes, storage durations, and type-based aliasing in ISO C. In low-level C programming, understanding object lifetimes and alias analysis is vital for preventing undefined behavior (UB), avoiding security vulnerabilities like use-after-free, and allowing advanced compiler optimizations without breaking memory invariants.
 
-## Topics
-- [[01_Object_lifetime|Object lifetime]]
-- [[02_Storage_duration|Storage duration]]
-- [[03_Dangling_pointers|Dangling pointers]]
-- [[04_Use_after_free|Use-after-free]]
-- [[05_Effective_type|Effective type]]
-- [[06_Strict_aliasing|Strict aliasing]]
-- [[07_Character_type_access|Character-type access]]
-- [[08_Union_aliasing_nuances|Union aliasing nuances]]
-- [[09_restrict_and_alias_analysis|restrict and alias analysis]]
-- [[10_Pointer_provenance_concerns|Pointer provenance concerns]]
-- [[11_Lifetime_safe_APIs|Lifetime-safe APIs]]
-- [[12_Sanitizer_backed_review|Sanitizer-backed review]]
+## Chapter Directory
+- [[01_Object_lifetime]] — Creation, storage activation, lifetime boundaries, and end-of-life destruction
+- [[02_Storage_duration]] — Automatic, static, thread, and allocated storage durations
+- [[03_Dangling_pointers]] — Pointer validity beyond object destruction and stack frame invalidation
+- [[04_Use_after_free]] — Heap-based dangling references and catastrophic security implications
+- [[05_Effective_type]] — ISO C dynamic type assignment rules and inspection constraints
+- [[06_Strict_aliasing]] — The Type-Based Alias Analysis (TBAA) rule and type compatibility constraints
+- [[07_Character_type_access]] — The universal alias exception for `char *`, `signed char *`, and `unsigned char *`
+- [[08_Union_aliasing_nuances]] — Type punning via unions under ISO C vs POSIX / GNU C extensions
+- [[09_restrict_and_alias_analysis]] — The `restrict` keyword, pointer independence, and loop vectorization
+- [[10_Pointer_provenance_concerns]] — Address integers, pointer arithmetic wraparound, and provenance tracking
+- [[11_Lifetime_safe_APIs]] — Design patterns for encapsulation, ownership transfer, and robust lifecycle contracts
+- [[12_Sanitizer_backed_review]] — Leveraging AddressSanitizer (ASan) and UndefinedBehaviorSanitizer (UBSan) for validation
 
-## Review prompts
-- What is guaranteed by ISO C?
-- What depends on the implementation, ABI, compiler, libc, or target?
-- What failure mode would appear on an embedded system?
-- What test or inspection would prove the behavior?
+## Related Chapters
+- [[../00_Complete_Topic_Map]]
+- [[../25_C_Dynamic_Memory]]
+- [[../27_C_Alignment_Object_Representation]]

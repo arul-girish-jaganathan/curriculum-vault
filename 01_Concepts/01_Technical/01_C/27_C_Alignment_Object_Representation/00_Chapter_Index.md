@@ -1,24 +1,23 @@
-# Alignment and Object Representation
+# 27_C_Alignment_Object_Representation: Chapter Index
 
-## Chapter purpose
-A deep-reference chapter in the C language knowledge base. Use it to understand the rule, reason about compiler and ABI effects, and apply it safely in embedded firmware.
+## Overview
+C Alignment and Object Representation governs how data types are aligned in memory hardware, how objects are structured bit-for-bit in bytes, and how compilers manage padding, alignment constraints, trap representations, and data serialization. This chapter provides a rigorous examination of memory alignment mechanics, C11 `_Alignof` and `_Alignas` (`<stdalign.h>`), object representations, padding bytes, hardware-level alignment requirements (DMA and cache lines), and ABI packing rules.
 
-## Topics
-- [[01_Alignment_requirements|Alignment requirements]]
-- [[02_Alignof|_Alignof]]
-- [[03_Alignas|_Alignas]]
-- [[04_Object_representation|Object representation]]
-- [[05_Unsigned_char_inspection|Unsigned char inspection]]
-- [[06_Padding_bytes|Padding bytes]]
-- [[07_Trap_representations|Trap representations]]
-- [[08_Copying_representations|Copying representations]]
-- [[09_Serialization_hazards|Serialization hazards]]
-- [[10_DMA_alignment|DMA alignment]]
-- [[11_Cache_line_alignment|Cache-line alignment]]
-- [[12_ABI_and_packing|ABI and packing]]
+## Chapter Directory
+- [[01_Alignment_requirements]] — Hardware alignment constraints, fundamental alignment, and strict alignment architectures
+- [[02_Alignof]] — Querying alignment via `_Alignof` / `alignof` operator
+- [[03_Alignas]] — Forcing alignment constraints via `_Alignas` / `alignas` specifier
+- [[04_Object_representation]] — Scalar and aggregate bit layouts, value representations, and padding
+- [[05_Unsigned_char_inspection]] — Examining raw object bytes safely via `unsigned char *` and `memcpy`
+- [[06_Padding_bytes]] — Structural holes, alignment padding, and uninitialized diagnostic hazards
+- [[07_Trap_representations]] — Invalid bit patterns, floating-point signaling NaNs, and integer trap values
+- [[08_Copying_representations]] — Safe object copying via `memcpy` vs. unsafe union/pointer type-punning
+- [[09_Serialization_hazards]] — Endianness, padding serialization bugs, and network protocol alignment
+- [[10_DMA_alignment]] — Peripheral direct memory access (DMA) alignment and cache coherence requirements
+- [[11_Cache_line_alignment]] — False sharing prevention, cache-line padding, and performance tuning
+- [[12_ABI_and_packing]] — Packed structures (`#pragma pack`), ABI compatibility, and unaligned access penalties
 
-## Review prompts
-- What is guaranteed by ISO C?
-- What depends on the implementation, ABI, compiler, libc, or target?
-- What failure mode would appear on an embedded system?
-- What test or inspection would prove the behavior?
+## Related Chapters
+- [[../00_Complete_Topic_Map]]
+- [[../25_C_Dynamic_Memory]]
+- [[../26_C_Lifetime_Aliasing]]

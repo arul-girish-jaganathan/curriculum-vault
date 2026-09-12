@@ -1,44 +1,90 @@
-# Predefined macros
-
-> Canonical C topic note — chapter 19.
+# 06: Predefined Macros
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Predefined macros**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+Predefined macros are built-in preprocessor identifiers whose values and definitions are provided automatically by the compiler and the C standard environment. They provide execution metadata, language standard tracking, architecture identification, and compilation environment introspection.
 
-## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+## Scope and Boundaries
+Covers: Mandatory ISO C macros (`__FILE__`, `__LINE__`, `__DATE__`, `__TIME__`, `__STDC__`, `__STDC_VERSION__`), common compiler/target macros, and reproducible build hazards.
+Does not cover: Feature test macros (see `07_Feature_detection`).
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+## Why Does It Exist
+Software needs self-awareness of its build environment, source location for error diagnostics, language feature compatibility, and target architecture configuration without manual configuration overhead.
 
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+## Mechanism and Language Rules
+1. **Standard Line/File Introspection:** `__LINE__` expands to the current source line number (decimal integer). `__FILE__` expands to a string literal containing the source filename.
+2. **Build Timestamps:** `__DATE__` ("Mmm dd yyyy") and `__TIME__` ("hh:mm:ss") provide compilation timestamps.
+3. **C Standard Conformance:** `__STDC_VERSION__` indicates the language edition:
+   - `199409L`: C94 / C95
+   - `199901L`: C99
+   - `201112L`: C11
+   - `201710L`: C17 / C18
+4. **Immutable State:** Attempting to `#define` or `#undef` any standard predefined macro is a constraint violation and must be rejected by the compiler.
 
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
-
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
+## Examples
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
+#include <stdio.h>
+#include <stdint.h>
+#include <assert.h>
+
+/* Enforce C11 or newer at compile time */
+#if !defined(__STDC_VERSION__) || (__STDC_VERSION__ < 201112L)
+    #error "This firmware requires ISO C11 or newer!"
+#endif
+
+/* Target Architecture Identification */
+#if defined(__arm__) || defined(__thumb__)
+    #define ARCH_IS_ARM 1
+#elif defined(__riscv)
+    #define ARCH_IS_RISCV 1
+#elif defined(__x86_64__) || defined(_M_X64)
+    #define ARCH_IS_X86 1
+#endif
+
+static void log_system_boot(void) {
+    /* Capture compile-time metadata */
+    printf("Firmware built: %s %s
+", __DATE__, __TIME__);
+    printf("Source reference: %s:%d
+", __FILE__, __LINE__);
 }
 ```
 
-## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+## Undefined, Unspecified, and Implementation-Defined Behavior
+- **Path Content in `__FILE__`:** Whether `__FILE__` contains an absolute path, relative path, or bare filename depends on how the file was passed to the compiler on the command line.
+- **Timestamp Reproducibility:** `__DATE__` and `__TIME__` create non-reproducible binary images across different compilation runs.
 
-## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+## Edge Cases and Failure Modes
+- **Leaking Absolute Paths:** If the build system invokes the compiler with absolute paths (`gcc -c /home/developer/firmware/main.c`), `__FILE__` embeds the developer's full host path into the binary image, leaking sensitive environment information and bloating flash.
+- **Reproducible Build Failure:** Automotive and aerospace compliance requires bit-identical binary reproduction from identical source code. Using `__DATE__` and `__TIME__` guarantees that binaries will never match byte-for-byte.
 
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+## Embedded Implications
+- **Path Truncation:** Modern compilers support `-fmacro-prefix-map=OLD=NEW` or `-ffile-prefix-map=` to strip host directory paths from `__FILE__`, ensuring clean logging and deterministic binaries.
+- **`SOURCE_DATE_EPOCH`:** Modern toolchains override `__DATE__` and `__TIME__` with the `SOURCE_DATE_EPOCH` environment variable to support reproducible builds.
+
+## Firmware Review Angle
+- Strictly forbid `__DATE__` and `__TIME__` in production release firmware to maintain bit-for-bit build reproducibility.
+- Verify that compiler flags include `-ffile-prefix-map` so that `__FILE__` does not embed developer usernames and host filesystem trees.
+
+## Compiler, ABI, and Toolchain Implications
+- Compilers define architecture macros (e.g., `__ARM_ARCH_7M__`, `__BYTE_ORDER__`) which enable writing zero-overhead target-specific assembly inlines.
+
+## Performance, Memory, Timing, and Power
+- Predefined macros resolve to compile-time constants; no runtime computational cost.
+- Strings generated by `__FILE__` increase `.rodata` flash consumption if used repeatedly in assertion macros.
+
+## Verification / Debugging
+- GCC/Clang: Run `gcc -dM -E - < /dev/null` to dump all predefined compiler macros.
+
+## Safety, Security, and Reliability
+- MISRA C:2012 Rule 20.6: The given tokens `defined`, `__DATE__`, `__FILE__`, `__LINE__`, `__STDC__`, `__STDC_HOSTED__`, `__STDC_VERSION__`, `__TIME__` shall not be used in `#define` or `#undef`.
+
+## Trade-offs and Alternatives
+- **`__func__` vs `__FILE__`:** `__func__` (introduced in C99) is an implicit local string variable, NOT a preprocessor macro. It cannot be stringized or token-pasted.
+
+## Staff-Level Takeaway
+Predefined macros provide essential environment telemetry. Ban `__DATE__` and `__TIME__` in safety-critical code to preserve binary reproducibility, sanitize `__FILE__` paths using compiler prefix maps, and leverage `__STDC_VERSION__` to lock down language standard requirements.
+
+## Related Concepts
+- `04_Stringification`
+- `07_Feature_detection`
+- `10_Preprocessor_diagnostics`

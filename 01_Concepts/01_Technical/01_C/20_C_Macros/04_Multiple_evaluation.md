@@ -1,44 +1,96 @@
-# Multiple evaluation
-
-> Canonical C topic note — chapter 20.
+# 04: Multiple Evaluation
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Multiple evaluation**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+Multiple evaluation occurs when a function-like macro references a parameter multiple times in its replacement list. If the caller passes an argument expression that contains side effects (e.g., increment/decrement operators, volatile reads, or non-idempotent function calls), those side effects execute multiple times, leading to corrupted data and non-deterministic behavior.
 
-## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+## Scope and Boundaries
+Covers: Parameter duplication hazards, side-effect expansion (`i++`, `read_fifo()`), sequence point violations, and mitigation patterns.
+Does not cover: Multiple statement execution (see `06_do_while_0_idiom`).
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+## Why Does It Exist
+Unlike true C functions—which evaluate each argument exactly once during parameter binding before executing the function body—macros perform textual substitution. Every occurrence of a parameter identifier in the macro body causes another distinct evaluation of the caller's expression.
 
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+## Mechanism and Language Rules
+1. **Textual Duplication:** If parameter `x` appears twice in the macro replacement list (e.g., `#define SQUARE(x) ((x) * (x))`), the caller's expression is copied twice into the AST.
+2. **Unsequenced Side Effects (ISO C99 §6.5):** If an expression with side effects (like `i++`) is evaluated multiple times without intervening sequence points, the behavior is undefined.
+3. **No Intermediate Storage:** Standard ISO C macros cannot create temporary variables to capture argument values without using statement blocks or compiler extensions.
 
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
-
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
+## Examples
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
+#include <stdint.h>
+#include <assert.h>
+
+/* CLASSIC HAZARD: Arguments evaluated twice */
+#define MIN(a, b)       (((a) < (b)) ? (a) : (b))
+#define SQUARE(x)       ((x) * (x))
+
+/* Mock hardware FIFO read function (side effect: pops front item) */
+static int g_fifo_data = 5;
+static int pop_fifo(void) {
+    return g_fifo_data++;
+}
+
+static void test_multiple_eval(void) {
+    int i = 1;
+    /* SQUARE(i++) expands to: ((i++) * (i++)) */
+    /* UNDEFINED BEHAVIOR: i modified twice without sequence point! */
+    // int sq = SQUARE(i++); 
+
+    int a = 10;
+    int b = 5;
+    /* MIN(a++, b) expands to: (((a++) < (b)) ? (a++) : (b)) */
+    /* If condition is false, 'a' is incremented ONCE.
+       If condition is true, 'a' is incremented TWICE! */
+    int m = MIN(a++, b);
+    assert(a == 11); /* Condition was false: a incremented once */
+
+    /* HARDWARE DESTRUCTION: pop_fifo() called multiple times! */
+    int val = MIN(pop_fifo(), 10);
+    /* pop_fifo() was evaluated TWICE: once for comparison, once to return! */
+    (void)val;
+    (void)m;
 }
 ```
 
-## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+## Undefined, Unspecified, and Implementation-Defined Behavior
+- Passing an expression with side effects (e.g., `SQUARE(i++)`) invokes Undefined Behavior in ISO C due to multiple unsequenced modifications of the same scalar object.
 
-## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+## Edge Cases and Failure Modes
+- **Hardware FIFO Draining:** Calling `MIN(uart_read(), threshold)` causes `uart_read()` to be called twice if it is the minimum, discarding a byte of incoming hardware data.
+- **Hidden Performance Degradation:** Passing an expensive calculation (e.g., `MIN(compute_fft(), limit)`) causes the expensive algorithm to run twice, halving system throughput.
 
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+## Embedded Implications
+- **Volatile Register Corruption:** Reading a volatile register clears status flags or advances hardware states (e.g., reading an ADC data register). Multiple evaluation of a volatile register argument causes the hardware state machine to advance unexpectedly.
+
+## Firmware Review Angle
+- Search for any macro parameter that appears more than once in the replacement list (`MIN`, `MAX`, `ABS`, `CLAMP`).
+- Verify that call sites never pass expressions with side effects (`++`, `--`, function calls, volatile reads).
+- Strongly advocate replacing all multiple-parameter macros with `static inline` functions.
+
+## Compiler, ABI, and Toolchain Implications
+- GCC and Clang provide a non-standard extension called "Statement Expressions" (`({ ... })`) that allows capturing arguments in local variables using `typeof`:
+  ```c
+  #define SAFE_MIN(a, b) ({       __typeof__(a) _a = (a);       __typeof__(b) _b = (b);       _a < _b ? _a : _b;   })
+  ```
+  While effective, statement expressions are non-standard ISO C and violate MISRA C.
+
+## Performance, Memory, Timing, and Power
+- Duplicate evaluation multiplies execution time and CPU energy consumption, especially when the argument contains math functions or peripheral reads.
+
+## Verification / Debugging
+- Compiler warnings: `-Wsequence-point` catches unsequenced modifications in macros like `SQUARE(i++)`.
+- Clang-Tidy: `bugprone-macro-repeated-side-effects` flags multiple evaluation hazards automatically.
+
+## Safety, Security, and Reliability
+- MISRA C:2012 Rule 20.7 and Directive 4.9: Prohibit function-like macros that evaluate arguments more than once or have side-effect liabilities.
+
+## Trade-offs and Alternatives
+- **Macro vs `static inline` Function:** A `static inline` function guarantees that every argument is evaluated strictly once before execution, completely eliminating multiple evaluation hazards.
+
+## Staff-Level Takeaway
+Never permit function-like macros that evaluate parameters more than once (`MIN`, `MAX`, `SQUARE`) in production codebases. Replace them with type-safe `static inline` functions to guarantee single-evaluation semantics and protect hardware states from accidental mutation.
+
+## Related Concepts
+- `02_Function_like_macros`
+- `03_Parentheses_discipline`
+- `11_When_inline_functions_are_safer`

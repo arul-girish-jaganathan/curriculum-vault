@@ -1,44 +1,107 @@
-# Custom allocators
-
-> Canonical C topic note — chapter 25.
+# 10: Custom Allocators
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Custom allocators**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+Custom allocators are user-defined memory management wrappers or alternative allocation algorithms that intercept standard allocation requests (`malloc`, `free`) or implement specialized allocation strategies tailored to specific application performance, debugging, or security requirements.
 
-## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+## Scope and Boundaries
+- **Covers:** Allocator wrappers, debugging instrumentation, leak tracking, red-zoning, and pool-backed custom allocators.
+- **Does not cover:** Standard OS heap allocators or embedded static policies ([[12_Embedded_allocation_policy]]).
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+## Why Does It Exist
+Standard system allocators are general-purpose and lack domain-specific optimizations or debugging features:
+- **Debugging & Sanitization:** Injecting tracking wrappers to log allocation sites, detect buffer overflows, track leaks, and catch double-frees.
+- **Performance Tuning:** Replacing general heap allocators with thread-cached or arena-based allocators to eliminate lock contention and fragmentation.
+- **Security Hardening:** Implementing canary values (cookies) around allocated blocks to detect memory corruption instantly.
 
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+## Mechanism and Language Rules
+- **Wrapper Pattern:** Intercepting calls by defining custom functions (e.g., `my_malloc`, `my_free`) that wrap standard allocators with additional logging or metadata tracking.
+- **LD_PRELOAD Interception:** On POSIX systems, defining functions named `malloc` and `free` in a shared library allows overriding standard libc allocator functions dynamically at runtime without recompiling source code.
 
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
-
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
+## Examples
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
+#include <stdio.h>
+#include <stdlib.h>
+#include <stddef.h>
+
+/* Custom allocation wrapper tracking total allocated bytes */
+static size_t g_total_allocated_bytes = 0;
+
+void *debug_malloc(size_t size, const char *file, int line) 
 {
-    return x;
+    /* Allocate extra space to store allocation metadata */
+    size_t actual_size = size + sizeof(size_t);
+    void *raw = malloc(actual_size);
+    if (!raw) {
+        return NULL;
+    }
+
+    /* Store size prefix */
+    size_t *meta = raw;
+    *meta = size;
+
+    g_total_allocated_bytes += size;
+    printf("[MEM_LOG] Allocating %zu bytes at %s:%d
+", size, file, line);
+
+    /* Return pointer offset past metadata header */
+    return (void *)(meta + 1);
 }
+
+void debug_free(void *ptr) 
+{
+    if (!ptr) {
+        return;
+    }
+
+    /* Retrieve metadata header preceding user pointer */
+    size_t *meta = (size_t *)ptr - 1;
+    size_t size = *meta;
+
+    g_total_allocated_bytes -= size;
+    printf("[MEM_LOG] Freeing %zu bytes
+", size);
+
+    free(meta);
+}
+
+/* Convenience macro wrapper */
+#define DBG_MALLOC(sz) debug_malloc(sz, __FILE__, __LINE__)
+#define DBG_FREE(ptr)  debug_free(ptr)
 ```
 
-## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+## Undefined, Unspecified, and Implementation-Defined Behavior
+- **Allocator Mismatch:** Passing a pointer allocated by `debug_malloc` directly to standard system `free()` instead of `debug_free()` bypasses metadata offset retrieval, causing severe heap corruption and undefined behavior.
 
-## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+## Edge Cases and Failure Modes
+- **Wrapper Overhead:** Adding tracking headers and logging statements to every allocation introduces CPU overhead and memory footprint expansion, making debug wrappers unsuitable for production release builds.
 
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+## Embedded Implications
+- **Targeted Instrumentation:** Embedded systems use custom allocator wrappers to route heap requests through memory protection units (MPUs) or log peak RAM consumption during unit testing.
+
+## Firmware Review Angle
+- **Audit Allocator Consistency:** Ensure that custom allocators and deallocators maintain strict symmetry; never mix wrapper allocators with native system allocators.
+
+## Compiler, ABI, and Toolchain Implications
+- **Linker Wrapping (`--wrap`):** GNU ld provides the `--wrap=symbol` linker flag, allowing developers to seamlessly redirect all calls to `malloc` to `__wrap_malloc` automatically.
+
+## Performance, Memory, Timing, and Power
+- **Profiling Cost:** Custom tracking wrappers incur logging and metadata storage overhead, trading execution speed for rigorous memory visibility.
+
+## Verification / Debugging
+- **Leak Detection:** Custom allocators with tracking tables provide instant reporting of un-freed memory blocks upon program shutdown, serving as lightweight alternatives to Valgrind.
+
+## Safety, Security, and Reliability
+- **Hardened Allocators:** Security-focused custom allocators randomize allocation locations, immediately poison freed memory, and use guard pages to mitigate exploitation.
+
+## Trade-offs and Alternatives
+- **Custom Wrapper vs. Standard Sanitizers:** Custom wrappers offer application-specific logging and control; ASan / Valgrind offer deeply integrated compiler and toolchain-level protection.
+
+## Staff-Level Takeaway
+Custom allocators and wrappers are powerful architectural tools for instrumenting memory usage, injecting debugging checks, or routing allocations to specialized memory pools. Ensure strict allocation/deallocation symmetry to prevent allocator mismatch faults.
+
+## Related Concepts
+- [[00_Chapter_Index]]
+- [[01_malloc]]
+- [[04_free]]
+- [[11_Pools_and_arenas]]
+- [[12_Embedded_allocation_policy]]

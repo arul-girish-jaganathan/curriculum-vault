@@ -1,24 +1,30 @@
-# Functions, Parameters and Call Semantics
+# Chapter 12: C Functions
 
-## Chapter purpose
-A deep-reference chapter in the C language knowledge base. Use it to understand the rule, reason about compiler and ABI effects, and apply it safely in embedded firmware.
+## Overview
+This chapter provides the canonical reference architecture for functions in ISO C (C99/C11/C17/C23). It details execution models, translation semantics, ABI boundary agreements, stack frame layout, register parameters, return mechanisms, optimization implications, and embedded firmware safety constraints.
 
-## Topics
-- [[01_Function_definition|Function definition]]
-- [[02_Function_declaration|Function declaration]]
-- [[03_Parameter_passing|Parameter passing]]
-- [[04_Pass_by_value|Pass-by-value]]
-- [[05_Array_parameter_adjustment|Array parameter adjustment]]
-- [[06_Pointer_parameters|Pointer parameters]]
-- [[07_Returning_values|Returning values]]
-- [[08_Returning_structures|Returning structures]]
-- [[09_Recursion|Recursion]]
-- [[10_Inline_functions|Inline functions]]
-- [[11_Calling_conventions|Calling conventions]]
-- [[12_Function_API_contracts|Function API contracts]]
+## Topic Index
+*   [[01_Function_definition]]
+*   [[02_Function_declaration]]
+*   [[03_Parameter_passing]]
+*   [[04_Pass_by_value]]
+*   [[05_Array_parameter_adjustment]]
+*   [[06_Pointer_parameters]]
+*   [[07_Returning_values]]
+*   [[08_Returning_structures]]
+*   [[09_Recursion]]
+*   [[10_Inline_functions]]
+*   [[11_Calling_conventions]]
+*   [[12_Function_API_contracts]]
 
-## Review prompts
-- What is guaranteed by ISO C?
-- What depends on the implementation, ABI, compiler, libc, or target?
-- What failure mode would appear on an embedded system?
-- What test or inspection would prove the behavior?
+## Cross-Cutting References
+*   [[Storage Duration and Lifetime]]
+*   [[Stack Frame Architecture and ABI]]
+*   [[13_C_Pointers/01_Pointer_declarations]]
+*   [[13_C_Pointers/12_Function_pointers]]
+*   [[Linker Scripts and Memory Sections]]
+*   [[Interrupt Handling and ISRs]]
+*   [[Compiler Optimization and Inlining]]
+
+---
+*Related: [[../00_Complete_Topic_Map]]*

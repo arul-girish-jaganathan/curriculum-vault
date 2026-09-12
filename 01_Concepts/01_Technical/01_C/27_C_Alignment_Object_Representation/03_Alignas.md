@@ -1,44 +1,88 @@
-# _Alignas
-
-> Canonical C topic note — chapter 27.
+# 03: Alignas
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **_Alignas**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+`_Alignas` (introduced in C11) is a type specifier/qualifier that requests a stricter (larger) alignment requirement for an object than its natural type alignment. Including `<stdalign.h>` provides the convenience macro `alignas`, which expands to `_Alignas`. It allows developers to enforce alignment constraints on variables, structure members, and structure definitions.
 
-## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+## Scope and Boundaries
+- **Covers:** `_Alignas` / `alignas` syntax, over-alignment, structure member padding control, and stack/data alignment.
+- **Does not cover:** Relaxing alignment (you cannot make an alignment smaller than fundamental alignment), operator querying ([[02_Alignof]]), or dynamic memory alignment.
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+## Why Does It Exist
+Hardware accelerators, SIMD instruction sets, and DMA controllers require data to be aligned to specific cache line or vector register boundaries:
+- **SIMD Vectorization:** AVX-512 or NEON vector instructions require 32-byte or 64-byte alignments; unaligned vector loads trigger hardware exceptions or performance degradation.
+- **Hardware DMA Buffers:** Ensuring receive/transmit buffers do not cross cache lines or memory page boundaries.
 
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+## Mechanism and Language Rules
+- **Syntax:** `_Alignas(expression)` or `_Alignas(type-name)`.
+- **Placement:** Can be applied to variable declarations, file-scope definitions, and structure member declarations.
+- **Stricter Only:** You can only request an alignment that is greater than or equal to the natural alignment of the type. Requesting an alignment smaller than fundamental alignment is a constraint violation and triggers a compilation error.
+- **Power of Two:** The expression passed to `_Alignas` must evaluate to a valid alignment value (a positive integer power of two).
 
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
-
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
+## Examples
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
+#include <stdio.h>
+#include <stdalign.h>
+#include <stdint.h>
+
+/* Force structure to align to 64-byte cache line boundary */
+struct alignas(64) cache_line_packet {
+    uint32_t header_id;
+    uint32_t payload_len;
+    uint8_t data[56];
+};
+
+int main(void) 
 {
-    return x;
+    struct alignas(64) cache_line_packet pkt;
+    
+    printf("Alignment of packet struct: %zu\n", alignof(struct cache_line_packet));
+    printf("Address of packet instance: %p\n", (void *)&pkt);
+    
+    /* Verify address is a multiple of 64 */
+    if ((uintptr_t)&pkt % 64 == 0) {
+        printf("Packet is 64-byte cache-line aligned.\n");
+    }
+    
+    return 0;
 }
 ```
 
-## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+## Undefined, Unspecified, and Implementation-Defined Behavior
+- **Implementation-Defined:** Maximum supported alignment limits vary by compiler and target ABI (e.g., some environments cap maximum alignment at 4096 bytes). Requesting an alignment exceeding platform limits causes a compilation error.
 
-## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+## Edge Cases and Failure Modes
+- **Under-Alignment Attempt:** Trying to write `alignas(1) uint64_t x;` on a 64-bit architecture where `uint64_t` requires 8-byte alignment violates C constraints, resulting in a compilation error.
+- **Array Alignment:** When applied to an array (`alignas(32) int arr[10];`), the alignment applies to the **array as a whole**, meaning every element is properly aligned.
 
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+## Embedded Implications
+- **DMA Buffer Safety:** Using `alignas(32)` on receive/transmit buffers prevents DMA write-back cache corruption and ensures compliance with MCU peripheral bus controller specifications.
+
+## Firmware Review Angle
+- **Audit SIMD/DMA Buffers:** Check that all high-speed DMA and cryptographic acceleration buffers are explicitly marked with `alignas()` matching hardware peripheral constraints.
+- **Verify Stack Variables:** Ensure large stack buffers required by hardware drivers use `alignas()` to prevent subtle unaligned bus faults.
+
+## Compiler, ABI, and Toolchain Implications
+- **Linker and Loader Support:** Over-aligned global variables require linker script support to ensure output sections respect alignment requirements.
+
+## Performance, Memory, Timing, and Power
+- **SIMD Acceleration:** Proper over-alignment unlocks high-speed vectorized SIMD instructions (`_mm256_load_ps`), boosting throughput for DSP algorithms.
+
+## Verification / Debugging
+- **Static Assertions:** Validate alignment requirements at compile time:
+  `_Static_assert(alignof(struct cache_line_packet) == 64, "Alignment mismatch");`
+
+## Safety, Security, and Reliability
+- **Reliability:** Prevents hardware bus faults caused by passing unaligned buffers into optimized hardware driver peripherals.
+
+## Trade-offs and Alternatives
+- **`alignas` vs. Heap Alignment:** `alignas` provides static compile-time over-alignment with zero allocation overhead, whereas heap allocations require specialized aligned allocation APIs (`aligned_alloc`).
+
+## Staff-Level Takeaway
+`_Alignas` bridges the gap between high-level C data structures and low-level hardware constraints. Use it deliberately when interfacing with SIMD vector units, DMA controllers, and high-performance hardware peripherals.
+
+## Related Concepts
+- [[00_Chapter_Index]]
+- [[01_Alignment_requirements]]
+- [[02_Alignof]]
+- [[10_DMA_alignment]]
+- [[11_Cache_line_alignment]]

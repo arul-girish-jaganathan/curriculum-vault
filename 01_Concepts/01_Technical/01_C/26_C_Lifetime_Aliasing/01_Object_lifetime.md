@@ -1,44 +1,82 @@
-# Object lifetime
-
-> Canonical C topic note — chapter 26.
+# 01: Object Lifetime
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Object lifetime**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+Object lifetime in ISO C is the portion of program execution during which storage is guaranteed to be reserved for a specific object. An object begins its lifetime when it is allocated or its storage is initialized, and its lifetime ends when its storage is deallocated, reused, or its enclosing scope exits.
 
-## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+## Scope and Boundaries
+- **Covers:** Object creation, activation, lifetime boundaries, storage reuse, and scope termination.
+- **Does not cover:** Storage duration categories ([[02_Storage_duration]]), heap allocation functions ([[../25_C_Dynamic_Memory/01_malloc]]), or strict aliasing rules ([[06_Strict_aliasing]]).
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+## Why Does It Exist
+The C memory model requires explicit bounds on when an object exists so that:
+- **Storage Reuse:** The compiler and memory manager can safely recycle memory blocks previously assigned to dead variables or freed allocations.
+- **Optimization Guarantees:** Compilers can track whether values can change or remain constant based on whether an active object exists at a given memory address.
+- **Safety Verification:** Establishing strict boundaries prevents programs from inspecting or modifying memory when no valid object occupies it.
 
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+## Mechanism and Language Rules
+- **Beginning of Lifetime:** An object's lifetime begins when storage is obtained and any initializers associated with the declaration are evaluated.
+- **End of Lifetime:**
+  - Automatic objects: End when execution leaves their enclosing block scope.
+  - Allocated objects: End when explicitly passed to `free()` or `realloc()`.
+  - Static/Thread objects: End when program or thread execution terminates.
+- **Storage Reuse:** Once an object's lifetime ends, any pointer that pointed to the old object becomes a dangling pointer. If new storage is allocated at the same address, a new object begins its lifetime, but old pointers do not automatically bind to it unless updated.
 
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
-
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
+## Examples
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
+#include <stdio.h>
+
+int *get_dangling_ptr(void) 
 {
-    return x;
+    int local_var = 42;
+    return &local_var; /* ERROR: local_var lifetime ends when function exits */
+}
+
+int main(void) 
+{
+    int *ptr = get_dangling_ptr();
+    /* Undefined Behavior: accessing memory outside object lifetime */
+    /* printf("Value: %d\n", *ptr); */
+    return 0;
 }
 ```
 
-## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+## Undefined, Unspecified, and Implementation-Defined Behavior
+- **Undefined Behavior:** Accessing the value of an object outside its lifetime (before it begins or after it ends) is undefined behavior.
+- **Indeterminate Values:** Accessing an automatic object before its initializer is evaluated yields an indeterminate value.
 
-## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+## Edge Cases and Failure Modes
+- **Returning Stack Addresses:** Returning pointers to automatic variables is a classic lifetime bug.
+- **Storage Overlap:** Writing into memory after an object's lifetime has ended can corrupt newly created objects occupying the same stack frame or heap slot.
 
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+## Embedded Implications
+- **ISR Stack Frames:** Interrupt service routines operating on stack frames must complete before the interrupted task exits its scope, preventing lifetime mismatch issues.
+- **Hardware Register Mapping:** Volatile memory mapped registers have unique lifetime semantics managed by hardware rather than C storage rules.
+
+## Firmware Review Angle
+- **Inspect Return Paths:** Verify that functions never return pointers to automatic (stack-allocated) variables.
+- **Audit Pointer Reuse:** Ensure pointers are reset to `NULL` immediately after object destruction or deallocation.
+
+## Compiler, ABI, and Toolchain Implications
+- **Register Allocation:** Compilers reuse stack slots and registers aggressively once an object's lifetime ends.
+- **Lifetime Markers:** Modern compilers emit dwarf lifetime debug info (`llvm.lifetime.start`/`end`) to optimize stack frame size.
+
+## Performance, Memory, Timing, and Power
+- **Automatic Cleanup:** Automatic objects incur zero runtime deallocation overhead because stack pointer adjustment reclaims them instantly.
+
+## Verification / Debugging
+- **AddressSanitizer (ASan):** Detects stack-use-after-scope and heap-use-after-free bugs by poisoning memory outside valid object lifetimes.
+
+## Safety, Security, and Reliability
+- **Information Leakage:** Dead stack frames retaining sensitive cryptographic keys or passwords can leak information if accessed via stale pointers.
+
+## Trade-offs and Alternatives
+- **Automatic vs. Dynamic:** Automatic storage provides speed and zero overhead but restricted lifetime; dynamic storage provides extended lifetime at the cost of manual management.
+
+## Staff-Level Takeaway
+An object's lifetime is an inviolable contract with the compiler. Once an object's lifetime ends, the memory address is merely raw bytes. Treat expired pointers as toxic; any dereference after lifetime expiration triggers undefined behavior.
+
+## Related Concepts
+- [[00_Chapter_Index]]
+- [[02_Storage_duration]]
+- [[03_Dangling_pointers]]
+- [[04_Use_after_free]]

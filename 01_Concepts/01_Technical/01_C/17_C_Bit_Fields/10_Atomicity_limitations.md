@@ -1,44 +1,86 @@
-# Atomicity limitations
-
-> Canonical C topic note — chapter 17.
+# 10: Atomicity Limitations
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Atomicity limitations**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+Atomicity limitations in bit fields refer to the architectural impossibility of modifying a single bit field within a shared storage unit without reading and rewriting the adjacent bit fields residing in that same unit. In concurrent, multi-threaded, or interrupt-driven environments, this causes silent, catastrophic data races.
 
-## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+## Scope and Boundaries
+Covers: Shared storage-unit races, Read-Modify-Write concurrency hazards, thread-safety boundaries, ISR preemption, and memory barriers.
+Does not cover: C11 `_Atomic` operations on entire full-width scalar objects.
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+## Why Does It Exist
+Modern microprocessors cannot address individual bits on the memory bus; they address bytes, half-words, or words. To modify a single bit, the processor must load the entire enclosing memory word, mutate the bit in a CPU register, and store the entire word back to RAM.
 
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+## Mechanism and Language Rules
+1. **Memory Location Definition (ISO C11 §3.14):** A memory location is either an object of scalar type or a maximal sequence of adjacent bit fields. Consecutive bit fields form a single memory location.
+2. **C11 Data Race Rule (§5.1.2.4):** Concurrent access to the same memory location by two threads, where at least one access is a modification, constitutes a Data Race and results in Undefined Behavior.
+3. **No Bit-Level Locks:** Standard atomic primitives cannot protect a single bit field; synchronization must lock the entire enclosing structure.
 
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
-
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
+## Examples
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
+#include <stdint.h>
+#include <stdbool.h>
+
+struct SharedState {
+    unsigned int task_ready    : 1; /* Modified by Main Thread */
+    unsigned int isr_triggered : 1; /* Modified by Interrupt Service Routine */
+    unsigned int fault_code    : 6;
+};
+
+volatile struct SharedState g_state;
+
+/* Main Thread Execution */
+void main_thread_loop(void) {
+    /* 
+     * Loads 32-bit word, sets bit 0, writes back 32-bit word.
+     * If pre-empted between read and write by ISR, the ISR's write to 
+     * isr_triggered will be OVERWRITTEN and permanently lost!
+     */
+    g_state.task_ready = 1;
+}
+
+/* Interrupt Handler (ISR) */
+void SysTick_Handler(void) {
+    g_state.isr_triggered = 1; /* Data race on adjacent bit field! */
 }
 ```
 
-## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+## Undefined, Unspecified, and Implementation-Defined Behavior
+- Concurrently mutating adjacent bit fields from separate execution contexts (threads, RTOS tasks, or ISRs) without locks invokes Undefined Behavior (Data Race under C11).
 
-## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+## Edge Cases and Failure Modes
+- **Phantom State Losses:** An ISR sets a hardware flag on an adjacent bit field. The main thread, unaware of the ISR, writes back its modified copy of the word, silently erasing the ISR's update.
+- **Lock-Free Illusions:** Developers assume that because two threads modify distinct named fields (`task_ready` vs `isr_triggered`), no lock is required. Because they share a storage unit, it is a single shared memory location.
 
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+## Embedded Implications
+- **Interrupt Corruption:** This is one of the most common causes of intermittent, irreproducible heisenbugs in bare-metal embedded systems.
+- **Bit-Banding Solution:** On ARM Cortex-M3/M4 cores, the hardware bit-band engine maps individual bits to discrete 32-bit word addresses, allowing atomic single-bit writes:
+  `*(volatile uint32_t *)BITBAND_ADDR = 1;`.
+
+## Firmware Review Angle
+- Check every struct containing bit fields for concurrent access: Are different bit fields in the same struct modified by both an ISR and thread code?
+- Enforce critical sections (`__disable_irq()` / `__enable_irq()`) or mutex locks around any bit-field mutations shared across contexts.
+
+## Compiler, ABI, and Toolchain Implications
+- Compilers cannot generate atomic instructions (like `LDREX`/`STREX`) for sub-byte bit fields without locking the entire word container.
+- C11 `_Atomic` cannot be applied directly to a bit field: `_Atomic unsigned int flag : 1;` is a constraint violation.
+
+## Performance, Memory, Timing, and Power
+- Protecting bit fields with critical sections or mutexes introduces locking latency and interrupts masking overhead, completely negating the memory-saving benefits of bit fields.
+
+## Verification / Debugging
+- ThreadSanitizer (`TSan`) flags data races on bit fields in host-simulated environments.
+- Hardware trace tools (ETM/SWO) can capture corrupted memory words caused by ISR preemption.
+
+## Safety, Security, and Reliability
+- Silent loss of interrupt events due to bit-field data races can cause state machine lockups and safety shutdown failures in industrial systems.
+
+## Trade-offs and Alternatives
+- **Separate Variables vs. Bit Fields:** Allocating independent `uint8_t` or `uint32_t` variables for each state flag costs slightly more RAM, but makes each variable an independent memory location that can be updated concurrently without data races.
+
+## Staff-Level Takeaway
+Adjacent bit fields share a single memory location. Never allocate flags in the same bit-field struct across different threads or interrupt contexts without explicit synchronization. When concurrency is required, use separate scalar variables or atomic word masks.
+
+## Related Concepts
+- `01_Bit_field_declaration`
+- `08_MMIO_bit_fields`
+- `09_Mask_and_shift_alternatives`

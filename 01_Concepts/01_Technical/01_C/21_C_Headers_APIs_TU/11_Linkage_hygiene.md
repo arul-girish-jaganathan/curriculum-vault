@@ -1,44 +1,75 @@
-# Linkage hygiene
-
-> Canonical C topic note — chapter 21.
+# 11: Linkage Hygiene
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Linkage hygiene**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+Linkage hygiene is the strict control of symbol visibility across translation units. In ISO C, identifiers can have external linkage (accessible across all translation units), internal linkage (accessible only within the current translation unit via `static`), or no linkage (local variables). Linkage hygiene mandates minimizing external linkage to prevent global namespace pollution and unintended symbol collisions.
 
-## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+## Scope and Boundaries
+Covers: `static` functions, `static` file-scope variables, `extern` declarations, GCC visibility attributes, and symbol hiding.
+Does not cover: C++ class access modifiers.
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+## Why Does It Exist
+All non-static functions and global variables in C share a single, flat global symbol namespace at link time. If two independent drivers both define a function named `init_hardware()`, the linker will fail with duplicate symbol errors, or worse, silently bind to the wrong function if weak symbols are involved.
 
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+## Mechanism and Language Rules
+1. **Internal Linkage (`static`):** Declaring a file-scope function or variable as `static` limits its visibility strictly to the current translation unit. It cannot be seen or linked by other `.c` files.
+2. **External Linkage (`extern`):** Non-static file-scope functions and variables have external linkage by default.
+3. **No Linkage:** Block-scope local variables have no linkage; they exist only on the stack or in registers.
 
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
-
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
+## Examples
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
+/* ================= drv_timer.c ================= */
+#include "drv_timer.h"
+
+/* Internal linkage: invisible outside this translation unit */
+static volatile uint32_t s_overflow_count = 0;
+
+static void internal_timer_recalibrate(void) {
+    /* Private helper routine: cannot collide with other drivers */
+    s_overflow_count = 0;
+}
+
+/* External linkage: the only symbol exported from this file */
+void timer_init(void) {
+    internal_timer_recalibrate();
 }
 ```
 
-## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+## Undefined, Unspecified, and Implementation-Defined Behavior
+- Declaring a symbol as `static` in a file after it was previously declared with external linkage in the same translation unit invokes Undefined Behavior in ISO C.
 
-## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+## Edge Cases and Failure Modes
+- **Forgotten `static`:** Omitting `static` on an internal helper function (`void reset_fifo(void)`) exports it globally, risking collision with any other file that defines a helper of the same name.
+- **Linker Masking:** In systems with weak symbols (`__attribute__((weak))`), a non-static helper function can inadvertently override a weak system hook, causing severe runtime bugs.
 
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+## Embedded Implications
+- **Linker Section Optimization:** Compilers can optimize `static` functions more aggressively: if a `static` function is called only once, the compiler automatically inlines it and eliminates its function symbol entirely, reducing Flash memory usage.
+
+## Firmware Review Angle
+- Enforce the rule: **Every function and file-scope variable must be `static` unless it is explicitly declared in the module's public or private header**.
+- Inspect compiler warnings for `-Wmissing-prototypes`: this flags any non-static function that lacks a header declaration.
+
+## Compiler, ABI, and Toolchain Implications
+- `static` symbols receive local symbol bindings (`STB_LOCAL`) in ELF symbol tables (`.symtab`) and are omitted entirely from dynamic symbol tables (`.dynsym`).
+
+## Performance, Memory, Timing, and Power
+- Marking functions `static` allows the compiler to make internal register-allocation decisions free from AAPCS calling convention constraints, improving execution speed and reducing stack frame overhead.
+
+## Verification / Debugging
+- Check global symbols exported by an object file:
+  `nm -g --defined-only file.o`
+  Only intended public API functions should appear in the output.
+
+## Safety, Security, and Reliability
+- MISRA C:2012 Rule 8.7: Functions and objects should not be defined with external linkage if they are referenced in only one translation unit.
+- MISRA C:2012 Rule 8.8: The `static` storage class specifier shall be used in all declarations of objects and functions that have internal linkage.
+
+## Trade-offs and Alternatives
+- Making everything `static` within a `.c` file improves safety and optimization, but makes white-box unit testing from external test harnesses harder (mitigated by test-specific compilation macros or mocking frameworks).
+
+## Staff-Level Takeaway
+Default to `static` for everything. A function or file-scope variable should only have external linkage if it is part of an official header contract. Enforce `-Wmissing-prototypes` across your toolchain to catch linkage leakage automatically.
+
+## Related Concepts
+- `04_External_declarations`
+- `05_Definition_ownership`
+- `12_Embedded_module_boundaries`

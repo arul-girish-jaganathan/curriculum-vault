@@ -1,44 +1,76 @@
-# Private headers
-
-> Canonical C topic note — chapter 21.
+# 02: Private Headers
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Private headers**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+A private header (`_priv.h`, `_internal.h`) is an interface file internal to a specific subsystem or driver. It shares internal structures, register layouts, and utility function prototypes between multiple translation units that comprise a single module, while strictly forbidding inclusion by external clients.
 
-## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+## Scope and Boundaries
+Covers: Subsystem-internal declarations, shared private structs, hardware register overlays, and translation unit firewalls.
+Does not cover: Public client APIs (see `01_Public_headers`) or single-file private `static` functions.
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+## Why Does It Exist
+Complex embedded drivers (such as a complete USB stack or BLE controller) are too large for a single `.c` file. Splitting the driver across multiple translation units requires sharing internal function signatures and complete struct layouts without exposing them in public API headers.
 
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+## Mechanism and Language Rules
+1. **Directory Isolation:** Stored in source directories (`src/`) rather than public include paths (`include/`).
+2. **Completing Opaque Types:** Private headers define the concrete body of structs declared opaquely in public headers.
+3. **Internal Linkage Symbols:** Declares functions that have `extern` linkage across module translation units, but must never be called by outside code.
 
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
-
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
+## Examples
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
+/* hal_uart_priv.h - Private Driver Header */
+#ifndef HAL_UART_PRIV_H
+#define HAL_UART_PRIV_H
+
+#include "hal_uart.h" /* Public interface */
+#include <stdint.h>
+
+/* Concrete definition of the opaque struct */
+struct UartDevice {
+    volatile uint32_t *base_reg;
+    uint32_t           baud;
+    uint32_t           rx_overflow_count;
+    bool               is_initialized;
+};
+
+/* Internal driver functions shared across uart_tx.c and uart_rx.c */
+void uart_hw_reset(struct UartDevice *dev);
+void uart_irq_enable(struct UartDevice *dev);
+
+#endif /* HAL_UART_PRIV_H */
 ```
 
-## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+## Undefined, Unspecified, and Implementation-Defined Behavior
+- Defining conflicting concrete bodies for the same struct tag across different private headers violates the One Definition Rule, invoking Undefined Behavior.
 
-## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+## Edge Cases and Failure Modes
+- **Client Header Leakage:** An application developer notices a useful internal function in `hal_uart_priv.h` and includes it directly in `main.c`, violating module encapsulation and binding application logic to private driver internals.
 
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+## Embedded Implications
+- **Silicon Revision Isolation:** Private headers allow hardware workarounds and errata registers to be isolated completely within driver source trees, preventing silicon bugs from polluting application logic.
+
+## Firmware Review Angle
+- Verify build system compiler include paths (`-I`): the directory containing private headers must NEVER be added to the include search path of client applications.
+- Enforce naming conventions: name internal headers with explicit suffixes (`*_priv.h` or `*_internal.h`).
+
+## Compiler, ABI, and Toolchain Implications
+- Hiding concrete struct definitions in private headers means changing member variables requires recompiling only the module's `.c` files, leaving the rest of the firmware untouched.
+
+## Performance, Memory, Timing, and Power
+- Facilitates multi-file driver partitioning without incurring runtime indirection overhead within the module itself.
+
+## Verification / Debugging
+- CI check: Disallow inclusion of any `*_priv.h` file from files outside its designated subsystem directory.
+
+## Safety, Security, and Reliability
+- Enforces modular encapsulation mandated by functional safety standards (ISO 26262 Part 6, Architecture and Design Principles).
+
+## Trade-offs and Alternatives
+- **Private Header vs Single Monolithic `.c` File:** A monolithic `.c` file keeps everything truly `static` (zero visibility to anyone else), but becomes unmaintainable when drivers exceed 2,000 lines.
+
+## Staff-Level Takeaway
+Use private headers to share data structures and helper APIs across multi-file modules. Shield them behind build-system include path barriers so external applications cannot bypass public API encapsulation.
+
+## Related Concepts
+- `01_Public_headers`
+- `06_Opaque_interfaces`
+- `12_Embedded_module_boundaries`

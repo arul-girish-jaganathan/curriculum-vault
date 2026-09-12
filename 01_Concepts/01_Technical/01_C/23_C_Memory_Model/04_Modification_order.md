@@ -1,44 +1,86 @@
-# Modification order
-
-> Canonical C topic note — chapter 23.
+# 04: Modification Order
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Modification order**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+In ISO C11 §5.1.2.4, the modification order of an atomic object is the single, total order of all writes (stores and read-modify-write operations) performed on that specific atomic object across the entire execution of the program. All threads in the system are guaranteed to observe the modifications to that particular object in this exact same sequence.
 
-## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+## Scope and Boundaries
+Covers: Per-object coherence, write-write consistency, read-read coherence, and store serialization.
+Does not cover: Global ordering across *different* atomic objects (see `08_seq_cst`).
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+## Why Does It Exist
+Even when memory operations are relaxed (`memory_order_relaxed`), the hardware must guarantee that a single variable does not fluctuate backwards in time. Modification order guarantees that once a thread observes a newer value of an atomic variable, it can never subsequently observe an older value of that same variable.
 
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+## Mechanism and Language Rules
+1. **Four Coherence Axioms:**
+   - **Write-Write Coherence:** If write $A$ precedes write $B$ in modification order, no thread can see $B$ and then $A$.
+   - **Read-Read Coherence:** If read $R_1$ reads value from write $A$, and read $R_2$ occurs later in the same thread, $R_2$ cannot read a value that preceded $A$ in modification order.
+   - **Read-Write Coherence:** A read cannot read a value overwritten by a write that happened-before it.
+   - **Write-Read Coherence:** A write cannot overwrite a value after a read that happened-after it.
+2. **Per-Object Scope:** Modification order applies to *individual* atomic objects independently.
 
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
-
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
+## Examples
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
+#include <stdatomic.h>
+#include <stdint.h>
+#include <assert.h>
+
+static atomic_uint_fast32_t g_state_counter;
+
+/* Thread 1: Drives State Forward */
+void thread_producer(void) {
+    /* Sequence of writes: establishes Modification Order (1 -> 2 -> 3) */
+    atomic_store_explicit(&g_state_counter, 1U, memory_order_relaxed);
+    atomic_store_explicit(&g_state_counter, 2U, memory_order_relaxed);
+    atomic_store_explicit(&g_state_counter, 3U, memory_order_relaxed);
+}
+
+/* Thread 2: Consumer */
+void thread_consumer(void) {
+    uint32_t first = atomic_load_explicit(&g_state_counter, memory_order_relaxed);
+    uint32_t second = atomic_load_explicit(&g_state_counter, memory_order_relaxed);
+
+    /* 
+     * READ-READ COHERENCE:
+     * If first observed 2, second can NEVER observe 1!
+     * It can only observe 2 or 3. The variable never travels backwards in time.
+     */
+    if (first == 2U) {
+        assert(second >= 2U);
+    }
 }
 ```
 
-## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+## Undefined, Unspecified, and Implementation-Defined Behavior
+- Non-atomic variables have NO modification order. Concurrently writing to a non-atomic variable violates coherence and causes Undefined Behavior (Data Race).
 
-## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+## Edge Cases and Failure Modes
+- **The Multi-Object Fallacy:** Developers often assume modification order applies across multiple variables: "If variable $X$ advanced to 2, then variable $Y$ must have advanced to 2." Modification order applies ONLY to a single variable in isolation. Cross-variable ordering requires acquire-release or `seq_cst`.
 
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+## Embedded Implications
+- **Hardware Coherence Controllers:** Even on multi-core microcontrollers with weakly ordered memory (e.g., dual-core ARM Cortex-A or Cortex-M55/M7 with AXI buses), hardware cache-coherency protocols (SCU / ACE) enforce a single modification order for every cache line.
+
+## Firmware Review Angle
+- Ensure developers understand that relaxed atomics provide coherence for *one* variable, but cannot be used to deduce the state of *other* variables.
+
+## Compiler, ABI, and Toolchain Implications
+- Compilers are strictly forbidden from reordering two stores to the same atomic object, as doing so would violate its modification order.
+
+## Performance, Memory, Timing, and Power
+- Enforced at the silicon level by hardware cache coherence protocols without requiring CPU software barrier instructions.
+
+## Verification / Debugging
+- Formal memory model tools verify modification order consistency by asserting write-serialization acyclicity.
+
+## Safety, Security, and Reliability
+- Ensures basic temporal sanity across multi-threaded state machines.
+
+## Trade-offs and Alternatives
+- **Single Object Coherence vs Multi-Object Synchronization:** If multiple state variables must advance in lockstep, group them into a single atomic struct or synchronize them using acquire-release atomics.
+
+## Staff-Level Takeaway
+Modification order guarantees that individual atomic objects never travel backwards in time. While relaxed atomics guarantee coherence for a single variable, never extrapolate that ordering to neighboring variables without explicit acquire-release barriers.
+
+## Related Concepts
+- `03_Happens_before`
+- `05_Synchronizes_with`
+- `../22_C_Concurrency_Atomics/05_memory_order_relaxed`

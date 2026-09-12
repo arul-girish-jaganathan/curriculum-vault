@@ -1,44 +1,81 @@
-# _Alignof
-
-> Canonical C topic note — chapter 27.
+# 02: Alignof
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **_Alignof**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+`_Alignof` (introduced in C11) is a unary operator that queries the alignment requirement of a specified type. Additionally, including `<stdalign.h>` provides the convenience macro `alignof`, which expands to `_Alignof`. It evaluates to a value of type `size_t` representing the number of bytes between successive valid addresses for objects of that type.
 
-## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+## Scope and Boundaries
+- **Covers:** `_Alignof` syntax, `alignof` macro, type alignment querying, and expression restrictions.
+- **Does not cover:** Forcing alignment ([[03_Alignas]]), dynamic alignment querying, or object padding calculations ([[06_Padding_bytes]]).
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+## Why Does It Exist
+Writing portable low-level systems code (custom allocators, memory pools, serialization engines) requires knowing type alignment constraints at compile time:
+- **Compile-Time Introspection:** Eliminates guesswork and hardcoded magic numbers (e.g., replacing hardcoded `4` or `8` with `alignof(uint64_t)`).
+- **Allocator Alignment:** Custom allocators ([[../25_C_Dynamic_Memory/10_Custom_allocators]]) must align returned memory blocks to satisfy the strictest alignment requirement of any object type to be stored within them.
 
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+## Mechanism and Language Rules
+- **Syntax:** `_Alignof(type-name)` or `alignof(type-name)`.
+- **Operand Restriction:** The operand of `_Alignof` must be a type name. Unlike C++ (`alignof(expression)`), ISO C11 `_Alignof` does **not** accept expressions (e.g., `alignof(variable)` is invalid in strict C11 unless using compiler extensions or GNU extensions, though C23 expands support).
+- **Constant Expression:** `_Alignof` is a constant expression and can be evaluated at compile time, making it valid in static assertions (`_Static_assert`).
 
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
-
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
+## Examples
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
+#include <stdio.h>
+#include <stdalign.h>
+#include <stdint.h>
+
+typedef struct {
+    char c;
+    uint64_t l;
+} mixed_t;
+
+int main(void) 
 {
-    return x;
+    printf("Alignment of char:     %zu\n", alignof(char));
+    printf("Alignment of int:      %zu\n", alignof(int));
+    printf("Alignment of double:   %zu\n", alignof(double));
+    printf("Alignment of uint64_t: %zu\n", alignof(uint64_t));
+    printf("Alignment of mixed_t:  %zu\n", alignof(mixed_t));
+
+    /* Compile-time static assertion checking alignment */
+    _Static_assert(alignof(mixed_t) >= alignof(uint64_t), "Mixed alignment violation");
+
+    return 0;
 }
 ```
 
-## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+## Undefined, Unspecified, and Implementation-Defined Behavior
+- **Implementation-Defined:** The exact numerical values returned by `_Alignof` for types like `long double` or user-defined structures are defined by the target platform ABI.
 
-## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+## Edge Cases and Failure Modes
+- **Expression Operand Trap (C11 Limitation):** Writing `alignof(my_variable)` in standard C11 code triggers a compile error because the operand must be a type name (`alignof(typeof(my_variable))` or `alignof(struct my_type)` is required).
+- **Incomplete Types:** Querying `_Alignof` on an incomplete type (e.g., a forward-declared struct whose definition is not yet visible) is a constraint violation.
 
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+## Embedded Implications
+- **DMA Buffer Alignment:** Use `alignof(uint32_t)` or target peripheral buffer requirements to statically verify that buffer alignments match hardware DMA controller specifications.
+
+## Firmware Review Angle
+- **Verify Portability:** Ensure code does not assume fixed alignment sizes across architectures (e.g., assuming `long` is always 4 bytes or 8 bytes). Use `alignof()` in assertions and memory calculations.
+
+## Compiler, ABI, and Toolchain Implications
+- **Compile-Time Evaluation:** `_Alignof` is fully resolved by the compiler front-end during semantic analysis, generating zero runtime instructions.
+
+## Performance, Memory, Timing, and Power
+- **Zero Runtime Cost:** Compile-time evaluation incurs zero CPU cycles or memory overhead at runtime.
+
+## Verification / Debugging
+- **Static Assertions:** Combine `_Alignof` with `_Static_assert` to enforce invariant structural constraints across different compiler toolchains.
+
+## Safety, Security, and Reliability
+- **Defensive Design:** Using `alignof()` guarantees that custom memory pool allocators never misalign buffers, eliminating subtle architecture-specific faults.
+
+## Trade-offs and Alternatives
+- **`alignof` vs. Hardcoded Constants:** Always prefer `alignof(T)` over hardcoding integer alignment values to maintain cross-platform portability.
+
+## Staff-Level Takeaway
+`_Alignof` is an essential meta-programming tool in C11 for building type-safe memory managers, allocators, and serialization routines. Treat it as the definitive compile-time authority on memory layout constraints.
+
+## Related Concepts
+- [[00_Chapter_Index]]
+- [[01_Alignment_requirements]]
+- [[03_Alignas]]
+- [[../25_C_Dynamic_Memory/05_Alignment_guarantees]]
