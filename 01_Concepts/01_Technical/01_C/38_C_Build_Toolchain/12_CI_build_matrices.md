@@ -3,41 +3,25 @@
 > Canonical C topic note — chapter 38.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **CI build matrices**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+A CI build matrix systematically builds a project across meaningful dimensions such as compiler, language mode, target, optimization, library configuration, feature set, and warning/static-analysis policy.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
-
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+The matrix should target risk, not combinatorial explosion. Keep one authoritative production configuration and add dimensions that can expose portability or ABI defects. Typical axes include debug/release, multiple compiler versions, target variants, 32/64-bit hosts, and feature configurations.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
-
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+For firmware, matrix builds can catch CPU/FPU mismatches, conditional-compilation drift, linker-script errors, configuration combinations that exceed memory budgets, and compiler-specific assumptions. Hardware-in-loop can cover a smaller set of high-value target configurations.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
-```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
-```
+- Testing many combinations while missing the actual release configuration.
+- Allowing matrix jobs to use different dependency versions.
+- Ignoring size/timing regressions because compilation succeeds.
+- Configuration-specific warnings being hidden.
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Define required gates per matrix dimension: compile, link, static analysis, unit tests, image-size limits, and target smoke tests. Archive logs and artifacts for failures.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+A CI matrix is a risk model. Select dimensions from known portability, safety, ABI, and product-configuration risks and ensure the exact release build is always exercised.
 
 ## Related
 [[00_Chapter_Index]]
