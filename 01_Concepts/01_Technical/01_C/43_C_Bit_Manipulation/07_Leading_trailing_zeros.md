@@ -1,43 +1,49 @@
 # Leading/trailing zeros
 
-> Canonical C topic note — chapter 43.
+> Canonical C topic note — Chapter 43. Count-leading-zeros and count-trailing-zeros operations locate the highest or lowest set bit and are building blocks for normalization, priority selection, and integer algorithms.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Leading/trailing zeros**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+For a fixed-width unsigned integer, CLZ counts zero bits before the highest set bit; CTZ counts zero bits after the lowest set bit. The all-zero input is a critical boundary and must be defined by the chosen API or implementation.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+C does not historically provide universal `clz`/`ctz` functions. Compiler builtins commonly exist, but many specify undefined behavior for zero. C23 adds standard bit utilities in implementations that support them, but the supported language/library profile must be checked.
 
 ### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+- What happens for zero?
+- What is the exact width?
+- Is the operand unsigned?
+- Is the returned count used as a shift count?
+- Does the next operation remain within range?
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+CLZ can implement priority encoders, normalization before fixed-point arithmetic, logarithm approximations, bitmap allocation, and efficient packet parsing. Many MCUs have native CLZ instructions, making intrinsic-based code highly efficient.
 
 ### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+A common defect is `1U << ctz(x)` without checking `x != 0`; another is using the result as a shift count equal to the word width. Treat zero as an explicit input case.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
+- Calling an API with zero when zero is outside its domain.
+- Mixing 16-bit logical width with a 32-bit promoted operand.
+- Using a returned count directly as a shift without bounds analysis.
+- Assuming timing is constant across all implementations.
 
 ## Example pattern
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
+unsigned first_set_bit(uint32_t x)
 {
-    return x;
+    if (x == 0U) {
+        return 32U; /* explicit sentinel for this API */
+    }
+    return (unsigned)__builtin_ctz(x);
 }
 ```
+The builtin is compiler-specific; production code should hide it behind a portability wrapper or use the project's supported standard API.
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Test zero, one, highest bit, lowest bit, and multiple-bit patterns. Compile with UBSan and warnings where applicable, and inspect the target instruction sequence when latency is important.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+Bit-count operations are dominated by their **zero-input and width contracts**. Establish those first, then select the implementation that best matches portability, latency, and target instruction support.
 
 ## Related
 [[00_Chapter_Index]]
