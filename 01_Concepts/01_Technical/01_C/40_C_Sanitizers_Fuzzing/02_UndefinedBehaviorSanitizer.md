@@ -1,28 +1,38 @@
 # UndefinedBehaviorSanitizer
 
-> Canonical C topic note — chapter 40.
-
 ## Definition
-UndefinedBehaviorSanitizer (UBSan) instruments selected operations to diagnose undefined or invalid behavior such as signed overflow, invalid shifts, misaligned accesses, and certain bounds/type violations, depending on compiler and enabled checks.
+**UndefinedBehaviorSanitizer (UBSan)** instruments selected operations so runtime execution can detect classes of behavior that the C language does not define, such as certain signed overflow, invalid shifts, misaligned accesses, invalid enum values, or out-of-range conversions depending on enabled checks and compiler support.
+
+## Scope and boundaries
+UBSan is compiler- and check-specific. It cannot detect every form of undefined behavior, and some checks may recover while others terminate. A clean run means only that exercised, instrumented paths did not trigger the selected checks.
 
 ## Mechanism and language rules
-UBSan checks are implementation features layered onto C semantics. Some modes recover and continue; others trap. A report identifies the operation and often the source location. Not every form of UB is dynamically detectable.
+Instrumentation is inserted around operations whose preconditions can be checked at runtime:
+
+```c
+int shift(int x, unsigned n)
+{
+    return x << n;
+}
+```
+
+Depending on enabled checks and type/target rules, an invalid shift count or other undefined operation can produce a diagnostic instead of silently continuing.
 
 ## Embedded implications
-UBSan is valuable on host builds for firmware algorithms, parsers, arithmetic, and state machines. On-target instrumentation may be too expensive or unavailable, so use a representative host harness and supplement it with target tests.
+UBSan is especially useful in host builds for arithmetic-heavy code, parsers, protocol lengths, state machines, and low-level libraries. Target support varies because the runtime may require substantial code and memory. MCU-specific tests are still needed for hardware faults and architecture behavior outside the sanitizer model.
 
 ## Edge cases and failure modes
-- Assuming one sanitizer configuration covers all UB.
-- Continuing after a recovered error and creating misleading secondary failures.
-- Relying on host integer widths or alignment.
-- Disabling checks that reveal a fundamental contract defect.
+- Assuming one UBSan mode covers every undefined behavior.
+- Suppressing a finding because the value “cannot happen” without proving the invariant.
+- Relying on recovery mode in safety-critical tests when termination is required.
+- Sanitizer runtime changes timing and memory layout.
+- Target-specific integer widths differ from the host test environment.
 
 ## Verification / debugging
-Enable relevant checks incrementally, reproduce the smallest failure, and fix the violated contract. Test boundary arithmetic, shifts, enum values, pointer alignment, and conversions explicitly.
+Enable relevant checks deliberately, preserve stack traces, and make sanitizer failures CI-visible. Use targeted tests for boundary values: zero/maximum shift counts, signed limits, alignment boundaries, enum ranges, and conversion extremes. Compare host types with target types.
+
+## Performance, memory, timing and power
+Instrumentation adds runtime checks and can substantially increase binary size. It is therefore primarily a validation configuration. The overhead can also expose timing-sensitive assumptions that should be tested separately.
 
 ## Staff-level takeaway
-UBSan turns many optimizer-sensitive assumptions into actionable failures. It is especially effective before interpreting release-only behavior as a compiler problem.
-
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+Use UBSan to turn hidden language-level assumptions into observable failures. Pair it with static analysis because dynamic sanitization can only detect behavior on executed paths.
