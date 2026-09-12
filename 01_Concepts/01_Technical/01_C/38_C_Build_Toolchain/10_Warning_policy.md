@@ -3,41 +3,25 @@
 > Canonical C topic note — chapter 38.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Warning policy**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+A warning policy defines which compiler diagnostics are enabled, which are errors, which are reviewed exceptions, and how policy is kept consistent across configurations and toolchains. Warnings are implementation diagnostics, not ISO C requirements.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
-
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+Use strong baseline warnings, language-specific warnings, conversion/sign/format diagnostics, and toolchain-specific checks where justified. Separate third-party code from product code rather than globally disabling useful diagnostics.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
-
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+Warnings catch truncation, signedness errors, missing prototypes, format mismatches, unreachable paths, and suspicious constructs before they reach hardware. Treating warnings as errors can prevent regressions but requires a controlled migration and documented exceptions.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
-```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
-```
+- Global suppression hiding unrelated defects.
+- New compiler versions turning diagnostics into build failures unexpectedly.
+- Generated/vendor code polluting product warning budgets.
+- Treating every warning as equally severe.
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Keep warning flags version-controlled. CI should build representative configurations and fail on policy violations. Suppress locally and narrowly, with a reason and preferably a toolchain-version scope.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+A warning policy is an engineering control: it reduces defect injection while keeping signal high. The goal is not zero text in the compiler log; it is zero unexplained diagnostic risk.
 
 ## Related
 [[00_Chapter_Index]]
