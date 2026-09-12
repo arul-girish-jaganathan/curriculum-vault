@@ -3,41 +3,53 @@
 > Canonical C topic note — chapter 35.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Safety-critical assertion policy**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+A safety-critical assertion policy defines which assumptions may be asserted, what happens when an assertion fails, which contexts permit diagnostics, and how failures are recorded and contained. In safety-critical firmware, `assert` is only one implementation mechanism; the real artifact is the system-level failure contract.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+Separate three classes:
+1. **Build-time invariants** — reject with `_Static_assert` or configuration checks.
+2. **Defensive runtime checks** — validate recoverable or externally influenced conditions explicitly.
+3. **Impossible-state invariants** — detect programming/design failures and enter a defined safe state.
+
+A policy should specify whether production assertions remain enabled, how diagnostic data is captured, and whether failure leads to reset, degraded operation, safe-state transition, or controlled shutdown.
 
 ### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+- Never let an assertion's side effects be required for correctness.
+- Define behavior for task, ISR, startup, and fault-handler contexts.
+- Bound diagnostic execution time and memory use.
+- Consider watchdogs and repeated-failure loops.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+A failed assertion can occur when clocks, RAM, flash, peripherals, or RTOS services are not fully initialized. Consequently, a generic logging routine may itself be unsafe. A robust design often records a small fixed-size failure record containing an ID, source location or build ID, CPU state, and reset reason, then transitions to the platform's failure state.
+
+For safety systems, “continue after assert” is not automatically safer: continuing with a violated invariant may be more dangerous than controlled reset or shutdown.
 
 ### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+Map every assertion class to a safety case and failure reaction. Measure worst-case execution time, stack use, persistent-storage behavior, and watchdog interaction. Ensure production behavior is intentional rather than simply inherited from a debug macro.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
+Dangerous patterns include formatted logging from a fault context, dynamic allocation during failure handling, attempting to recover after corrupted global state, and repeatedly writing the same persistent failure record until flash wears out.
 
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
+Do not assert on normal communication errors or malformed external input unless the policy explicitly defines those conditions as impossible.
 
 ## Example pattern
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
+static void invariant_failed(uint16_t id)
 {
-    return x;
+    fault_record_minimal(id);
+    disable_nonessential_activity();
+    system_reset_or_safe_state();
+    for (;;) {
+        /* Watchdog or hardware safety mechanism owns final recovery. */
+    }
 }
 ```
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Inject assertion failures in every supported execution context. Verify the resulting reset reason, persistent record, watchdog behavior, and next-boot handling. Perform power-loss testing if records are stored in nonvolatile memory.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+A safety assertion is not just a macro. It is a deliberate failure-management path whose timing, persistence, reset behavior, and safety consequence must be specified and verified.
 
 ## Related
 [[00_Chapter_Index]]
