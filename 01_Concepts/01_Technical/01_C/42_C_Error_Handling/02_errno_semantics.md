@@ -1,43 +1,57 @@
 # errno semantics
 
-> Canonical C topic note — chapter 42.
+> Canonical C topic note — Chapter 42. `errno` is a thread-local error indicator provided by the C library for selected library interfaces; it is not a universal C exception mechanism and its meaning is defined by the function that documents it.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **errno semantics**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+`errno` is a modifiable integer object used by library functions to report additional error information. A function may set it when a documented error occurs. A successful call generally does not guarantee that `errno` is reset, so callers should inspect it only when the API specifies that an error occurred and that `errno` is meaningful.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+`<errno.h>` provides the `errno` identifier and error macros such as `EDOM`, `ERANGE`, and implementation-defined additional values. In a threaded hosted environment, `errno` is commonly implemented so each thread has independent state, though the C standard specifies the interface rather than a particular TLS implementation.
 
 ### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+- Does the immediately preceding API call document `errno` use?
+- Was the failure return checked first?
+- Could another library call overwrite `errno` before it is consumed?
+- Is the target freestanding or using a restricted C library?
+- Is the error code stable across platforms?
+
+Do not write `if (errno != 0)` after an arbitrary successful call and conclude that the call failed.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+Many embedded libraries provide only a subset of hosted-library `errno` behavior, and some RTOS/libc configurations implement it with thread-local storage that has RAM and context-switch cost. In tight firmware, explicit status returns are often clearer and cheaper.
 
 ### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+If `errno` crosses a portability boundary, document the supported libc and threading model. Avoid using it as hidden global state in ISR paths or callbacks unless the implementation explicitly guarantees the required behavior.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
+- Reading `errno` after another call can report the wrong failure.
+- `errno` can retain an old value after success.
+- Assuming POSIX-specific error meanings in ISO C code reduces portability.
+- ISR and task contexts can have different error-state semantics.
+- Logging code can itself make calls before `errno` is copied.
 
 ## Example pattern
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
+long value = strtol(text, &end, 10);
+if (end == text) {
+    /* conversion failed */
+} else if (errno == ERANGE) {
+    /* range error, when documented by the function */
 }
 ```
+The important pattern is to save/use error state at the point required by the API contract and validate the other result conditions too.
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Test boundary values, malformed input, range errors, and successful calls following failures. Verify the exact libc documentation for the target. In multithreaded firmware, test whether error state is per-thread as expected.
+
+Staff-level questions:
+- Why is `errno` preferable to an explicit status here?
+- What are its storage and context-switch costs?
+- Does the target's libc actually implement the required semantics?
+- Can diagnostic code overwrite the evidence?
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+Treat `errno` as **API-specific diagnostic state**, not as a global failure flag. Explicitly check the primary return condition first, then consume `errno` only where documented.
 
 ## Related
 [[00_Chapter_Index]]
