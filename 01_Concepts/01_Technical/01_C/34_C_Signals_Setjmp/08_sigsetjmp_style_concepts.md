@@ -3,41 +3,86 @@
 > Canonical C topic note — chapter 34.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **sigsetjmp-style concepts**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+`sigsetjmp()` and `siglongjmp()` are POSIX-style extensions associated with non-local control flow and signal-mask state. They are **not ISO C interfaces**. This note exists to explain the distinction because production embedded/Unix-like code often encounters them alongside `setjmp()` and `longjmp()`.
+
+The key difference is that a POSIX environment can optionally save and restore the process signal mask along with the execution context. The exact behavior depends on the `savesigs` argument and implementation.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+Conceptually:
+
+```c
+if (sigsetjmp(env, 1) == 0) {
+    /* protected region */
+} else {
+    /* resumed after siglongjmp */
+}
+```
+
+With signal-mask saving enabled, `siglongjmp()` can restore both the saved execution context and the associated signal-mask state. This is valuable in code where asynchronous signal blocking is part of the recovery invariant.
+
+Because these APIs are outside ISO C, portability requires an explicit platform layer.
 
 ### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+- `sigjmp_buf` is an opaque POSIX type.
+- Signal-mask restoration is distinct from ordinary register/stack context restoration.
+- `sigsetjmp()` has the same broad non-local-control-flow hazards as `setjmp()`.
+- The environment must remain valid; jumping into a returned function is invalid.
+- POSIX imposes additional rules concerning signal handlers and asynchronous contexts.
+- Do not replace `sigsetjmp()` with ISO C `setjmp()` when signal-mask semantics are part of correctness.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+A freestanding MCU normally has no POSIX signal mask, so these APIs are usually unavailable. If an embedded Linux/Unix-class system uses them, treat them as operating-system primitives rather than portable C.
+
+The analogous embedded problem is often restoring interrupt-enable/mask state after an exceptional control transfer. That should be handled by the RTOS/CPU exception model or explicit cleanup, not by assuming POSIX signal-mask semantics exist.
 
 ### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+Ask whether the design really needs non-local control flow and whether the platform abstraction can preserve all relevant asynchronous state. Document which state is restored automatically and which state remains the caller's responsibility.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
+Hazards include:
+- assuming `sigsetjmp()` is standard C;
+- misunderstanding the `savesigs` parameter;
+- restoring a signal mask that the caller no longer expects;
+- using the saved environment after its owning stack frame has ended;
+- combining signal-handler recovery with locks, allocation, or stdio;
+- porting the code to a freestanding MCU where the entire facility is absent.
 
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
+A particularly subtle issue is treating execution context and asynchronous-delivery state as one thing. They are separate pieces of system state and must both be modeled.
 
 ## Example pattern
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
+/* POSIX-style example; not ISO C. */
+#include <setjmp.h>
+
+static sigjmp_buf env;
+
+static void recover(void)
 {
-    return x;
+    siglongjmp(env, 1);
+}
+
+static void run(void)
+{
+    if (sigsetjmp(env, 1) == 0) {
+        /* Protected POSIX signal-aware operation. */
+        recover();
+    } else {
+        /* Recovery after context and selected signal state are restored. */
+    }
 }
 ```
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+On POSIX systems, test both `savesigs == 0` and `savesigs != 0` where relevant, and inspect the signal mask before and after recovery. On embedded ports, ensure the feature is isolated behind a platform abstraction and has a documented replacement or compile-time exclusion.
+
+Staff-level questions:
+- Which parts are ISO C and which are POSIX?
+- Does signal-mask restoration form part of the correctness proof?
+- What happens on the target platform where this API does not exist?
+- Can explicit state propagation eliminate the non-local jump?
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+`sigsetjmp`-style APIs are a reminder that **C syntax can hide operating-system contracts**. Keep POSIX-specific non-local control flow isolated, document the extra asynchronous state being restored, and never present it as portable ISO C.
 
 ## Related
 [[00_Chapter_Index]]
