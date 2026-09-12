@@ -3,41 +3,25 @@
 > Canonical C topic note — chapter 40.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Host-target differential testing**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+Differential testing compares behavior of two implementations or environments for the same inputs. In embedded C, a host implementation can be compared with the target implementation to reveal portability and representation differences.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
-
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+The comparison requires a defined oracle: decoded fields, serialized bytes, state transitions, checksums, or mathematical results. Differences may be legitimate when behavior is implementation-defined, so first classify the C rule and target contract.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
-
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+This approach is powerful for parsers, encoders, cryptographic wrappers, fixed-point algorithms, and protocol state machines. It can expose endianness, width, alignment, signedness, and floating-point assumptions without requiring every input to run on hardware.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
-```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
-```
+- Treating host behavior as the specification.
+- Comparing undefined behavior instead of defined outputs.
+- Ignoring target-specific rounding or integer widths.
+- Using nondeterministic timestamps/randomness in the comparison.
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Generate the same corpus for host and target, compare canonical outputs, and classify every mismatch. Add each confirmed portability defect as a regression test.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+Differential testing is strongest when the oracle is derived from the product contract, not whichever implementation happened to be written first.
 
 ## Related
 [[00_Chapter_Index]]
