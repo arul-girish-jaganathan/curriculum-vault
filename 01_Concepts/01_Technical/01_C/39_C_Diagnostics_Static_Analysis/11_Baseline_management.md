@@ -1,28 +1,37 @@
 # Baseline management
 
-> Canonical C topic note — chapter 39.
-
 ## Definition
-A static-analysis baseline records known existing findings so CI can enforce that new defects do not increase the accepted debt. It is a migration mechanism, not a permanent safety exemption.
+A **static-analysis baseline** records accepted existing findings so teams can enforce “no new defects” while paying down legacy debt incrementally. Baselines are useful for large C codebases where immediate cleanup of every historical warning is impractical.
+
+## Scope and boundaries
+A baseline is not an exemption from analysis. It should be tied to a specific source revision, analyzer version, configuration, and finding identity. New findings must remain visible even when old findings are tolerated.
 
 ## Mechanism and language rules
-Baselines should identify stable finding fingerprints, locations, rule IDs, and tool versions. Prefer tracking defects and deviations explicitly when practical because line-based fingerprints can become stale after refactoring.
+A practical model is:
+
+```text
+legacy findings -> baseline
+new/changed findings -> quality gate
+fixed legacy findings -> removed from baseline
+```
+
+Baseline entries should ideally be stable by rule, file, location, and diagnostic identity rather than fragile textual matching.
 
 ## Embedded implications
-Baselines allow legacy firmware to adopt stronger analysis without blocking all development. New and modified code can be held to a stricter gate while historical findings are retired progressively.
+Long-lived firmware repositories accumulate vendor code, legacy drivers, generated files, and historical deviations. A baseline lets the team introduce stronger MISRA/CERT/static-analysis policy without blocking all development, while still preventing regression in actively changed modules.
 
 ## Edge cases and failure modes
-- Baseline silently accepting a newly introduced defect with a matching fingerprint.
-- Never reducing baseline size.
-- Updating tool versions without reviewing changed findings.
-- Storing baselines outside source control.
+- Baseline is silently refreshed on every build and therefore never shrinks.
+- Analyzer upgrade causes all findings to appear “new.”
+- Findings are moved rather than fixed to game the baseline.
+- Baseline contains high-severity defects with no remediation plan.
+- Generated/vendor code is mixed with application findings.
 
 ## Verification / debugging
-Track baseline count and age. Require review for additions. Periodically rebuild from a clean analysis and retire resolved findings. Pin analyzer versions or explicitly review version changes.
+Version the baseline and analyzer configuration. Require review for baseline changes. Track counts and severity over time. Prefer ownership and expiry for high-risk entries. Re-baseline only as a deliberate migration event with a documented comparison.
+
+## Performance, memory, timing and power
+Baselines primarily improve engineering throughput and CI adoption. They have no firmware runtime cost.
 
 ## Staff-level takeaway
-A baseline should trend toward zero or a controlled, justified residual—not become a second database of ignored defects.
-
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+Use baselines as a **migration mechanism, not a permanent landfill**. The quality trend should move toward fewer accepted findings, while the gate prevents new debt.
