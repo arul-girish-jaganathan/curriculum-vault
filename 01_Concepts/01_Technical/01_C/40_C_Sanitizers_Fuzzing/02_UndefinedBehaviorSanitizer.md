@@ -3,41 +3,25 @@
 > Canonical C topic note — chapter 40.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **UndefinedBehaviorSanitizer**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+UndefinedBehaviorSanitizer (UBSan) instruments selected operations to diagnose undefined or invalid behavior such as signed overflow, invalid shifts, misaligned accesses, and certain bounds/type violations, depending on compiler and enabled checks.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
-
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+UBSan checks are implementation features layered onto C semantics. Some modes recover and continue; others trap. A report identifies the operation and often the source location. Not every form of UB is dynamically detectable.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
-
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+UBSan is valuable on host builds for firmware algorithms, parsers, arithmetic, and state machines. On-target instrumentation may be too expensive or unavailable, so use a representative host harness and supplement it with target tests.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
-```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
-```
+- Assuming one sanitizer configuration covers all UB.
+- Continuing after a recovered error and creating misleading secondary failures.
+- Relying on host integer widths or alignment.
+- Disabling checks that reveal a fundamental contract defect.
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Enable relevant checks incrementally, reproduce the smallest failure, and fix the violated contract. Test boundary arithmetic, shifts, enum values, pointer alignment, and conversions explicitly.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+UBSan turns many optimizer-sensitive assumptions into actionable failures. It is especially effective before interpreting release-only behavior as a compiler problem.
 
 ## Related
 [[00_Chapter_Index]]
