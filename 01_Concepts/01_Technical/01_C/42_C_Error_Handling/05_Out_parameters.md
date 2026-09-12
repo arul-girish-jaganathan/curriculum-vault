@@ -1,65 +1,59 @@
 # Out-parameters
 
-> Canonical C topic note — Chapter 42. An out-parameter lets a function write a result into caller-owned storage through a pointer. It is a core C interface pattern because C has no general multiple-return-value syntax.
+> Canonical C topic note — Chapter 42. An out-parameter is caller-owned storage supplied to a function for receiving a result. The contract must define validity, required capacity, initialization, ownership, and behavior on failure.
 
 ## Definition
-A parameter such as `T *out` designates caller-provided storage into which the callee writes a result. The API must define preconditions, ownership, initialization, output validity, and failure behavior.
+A pointer parameter such as `uint32_t *value` can let a function return primary status through its return value and data through caller storage. This separates error classification from the result and supports multiple outputs.
 
 ## Mechanism and language rules
-The pointer value is passed according to the ABI. Dereferencing it requires a valid, appropriately aligned object with sufficient storage and the required lifetime. `const` on input pointers and non-`const` output pointers can make intent explicit.
+The pointer must designate writable, suitably aligned storage with sufficient lifetime and size. The implementation must define whether the pointer may be null and whether the output is modified before success.
 
 ### What to reason about
-- Is `out` allowed to be null?
-- How large must the destination be?
-- Is it fully initialized on success?
-- Is it modified on failure?
-- Can `out` alias an input object?
-- Does the callee retain the pointer after returning?
+- Is the pointer an input, output, or in/out parameter?
+- What preconditions apply to alignment and capacity?
+- Is the output initialized on every success path?
+- Is it unchanged on failure or partially written?
+- Can it alias an input or another output?
+- Does asynchronous execution retain the pointer after return?
 
-If the API does not retain the pointer, the caller-owned object's lifetime only needs to cover the call. If the pointer is retained asynchronously, the lifetime and ownership contract becomes substantially stronger.
+Use `const` on input pointers and explicit documentation for ownership and aliasing.
 
 ## Embedded implications
-Out-parameters avoid returning large structures by value when ABI/code-size constraints make that useful, and they can let callers reuse static buffers. They also make ownership visible at the call boundary.
+Out-parameters avoid large structure returns or copies on some ABIs and can be useful in constrained systems. They are common in drivers and parsers, but pointer lifetime becomes critical when DMA or deferred work is involved.
 
 ### Firmware review angle
-For DMA or asynchronous APIs, an out-parameter may actually become an ownership transfer. Document whether the pointer is used synchronously, retained until completion, or returned through a callback.
+Define ownership at every API boundary. For asynchronous APIs, do not retain an out-parameter pointer unless the contract explicitly says so and the lifetime mechanism is robust.
 
 ## Edge cases and failure modes
-- Passing an uninitialized pointer instead of a pointer to storage.
-- Returning success without initializing the complete output.
-- Partial writes on failure without documenting them.
-- Stack output passed to an asynchronous operation and then going out of scope.
-- Aliasing input/output unexpectedly changes results.
+- Null pointer dereference.
+- Uninitialized output after an error.
+- Partial output interpreted as complete output.
+- Input/output aliasing causing self-overwrite.
+- Stack output passed to a function that stores it for later asynchronous use.
 
 ## Example pattern
 ```c
-status_t parse_u16(const char *text, uint16_t *out)
+status_t parse_id(const uint8_t *buf, size_t len, uint32_t *id)
 {
-    if ((text == NULL) || (out == NULL)) {
+    if (buf == NULL || id == NULL || len < 4U) {
         return STATUS_INVALID_ARG;
     }
-
-    uint16_t value;
-    if (!parse_internal(text, &value)) {
-        return STATUS_INVALID_DATA;
-    }
-    *out = value;
+    *id = ((uint32_t)buf[0] << 24) |
+          ((uint32_t)buf[1] << 16) |
+          ((uint32_t)buf[2] << 8)  |
+          (uint32_t)buf[3];
     return STATUS_OK;
 }
 ```
-A local temporary gives an atomic “commit on success” behavior for the output.
+The contract says `*id` is valid only when `STATUS_OK` is returned.
 
 ## Verification / debugging
-Test null pointers, valid storage, failure-before-write, boundary values, aliasing, and asynchronous lifetime. Static analysis should track pointer validity and possible null dereferences.
+Test null pointers, boundary lengths, exact output values, failure preservation, aliasing if allowed, and asynchronous lifetime rules. Static analysis can help detect nullability and uninitialized-output paths.
 
-Staff-level questions:
-- What exactly does success guarantee about the output?
-- Who owns the pointed-to storage before, during, and after the call?
-- Can the function retain the pointer?
-- Is partial output ever observable?
+Staff-level questions: What exactly does success guarantee? What happens to the output on every failure? Could a result structure make the contract clearer? Is the pointer still valid after the function returns?
 
 ## Staff-level takeaway
-An out-parameter is more than `*out = value`; it is a **storage, lifetime, ownership, and validity contract**. Make those dimensions explicit, especially when the operation crosses task, ISR, DMA, or subsystem boundaries.
+Out-parameters are a simple C mechanism for **separating status from data**, but the pointer contract is part of the API ABI. Define validity and lifetime as precisely as the data type itself.
 
 ## Related
 [[00_Chapter_Index]]
