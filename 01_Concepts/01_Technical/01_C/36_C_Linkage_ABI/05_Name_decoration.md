@@ -3,41 +3,82 @@
 > Canonical C topic note — chapter 36.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Name decoration**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+**Name decoration** (often called name mangling or symbol decoration) is the transformation of source-level identifiers into linker symbol names by a compiler/toolchain. C generally has comparatively simple external names, but the exact spelling, prefixes, suffixes, leading underscores, case rules, object-file encoding and platform ABI are implementation-specific.
+
+C source code therefore cannot safely assume that a linker symbol has a particular textual spelling unless the toolchain contract explicitly guarantees it.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+A source declaration such as:
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
-
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
-
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
-
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
+int calculate(int x);
 ```
 
+has a C-level identifier `calculate`. The compiler emits an object symbol representing that entity. On one target the symbol may appear as `calculate`; another ABI may add decoration. C itself does not standardize `nm` output or object-file symbol spelling.
+
+This becomes especially important at language boundaries. C++ commonly encodes function signatures into symbols for overloads and namespaces. `extern "C"` in C++ requests C linkage for interoperable declarations, but it is a C++ feature, not C syntax.
+
+Calling convention and name decoration are separate concerns. Two objects can have matching names yet incompatible parameter/return conventions, or differently decorated names despite representing intendedly related APIs.
+
+Assembly interfaces may explicitly reference linker names:
+
+```asm
+    bl uart_write
+```
+
+That assembly is tied to the selected ABI/toolchain. If the compiler changes symbol naming, the assembly must change or use a stable assembler/linker interface.
+
+## Embedded implications
+Startup code, vector tables, bootloaders, DSP libraries, vendor assembly, RTOS ports and hand-written context-switch code often cross this boundary. A naming mismatch can cause an unresolved symbol, but a worse failure is a successfully resolved symbol with an incompatible ABI.
+
+### Firmware review angle
+Whenever C calls assembly or another language, document:
+
+- exact symbol names;
+- calling convention;
+- parameter/return representation;
+- register preservation rules;
+- stack alignment;
+- floating-point convention;
+- structure layout;
+- endianness where binary data crosses the boundary.
+
+Do not infer the contract from a single compiler's generated assembly.
+
+## Edge cases and failure modes
+Common traps include assuming all C compilers emit identical names, copying an `nm` spelling into portable source, forgetting a C/C++ linkage boundary, and mixing object files from incompatible ABI modes.
+
+A particularly dangerous case is a manually declared foreign function with the right source name but wrong prototype. The linker sees a symbol; it does not validate the C type contract. The callee may interpret registers or stack slots incorrectly.
+
+## Example pattern
+A stable C API intended for C and C++ consumers can be expressed through a C header:
+
+```c
+/* api.h */
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+int device_read(void *dst, unsigned len);
+
+#ifdef __cplusplus
+}
+#endif
+```
+
+The `extern "C"` portion is interpreted only by C++.
+
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Inspect object symbols with `nm`/`objdump`/`readelf` or the platform equivalent. Compare compiler-generated assembly at the boundary. For mixed-language builds, compile a tiny ABI test and link it in CI.
+
+Staff-level questions:
+- Which exact toolchain defines the symbol spelling?
+- Is the boundary C↔C++, C↔assembly, or compiler↔compiler?
+- Is the ABI documented independently of implementation names?
+- Can a wrapper isolate unstable decoration from the public interface?
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+A linker name is **not the C identifier contract**. Treat name decoration as an ABI artifact, isolate mixed-language boundaries behind stable interfaces, and verify both symbol spelling and calling convention.
 
 ## Related
 [[00_Chapter_Index]]
