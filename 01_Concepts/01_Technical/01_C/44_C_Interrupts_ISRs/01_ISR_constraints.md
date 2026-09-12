@@ -1,43 +1,53 @@
 # ISR constraints
 
-> Canonical C topic note — chapter 44.
+> Canonical C topic note — Chapter 44. An interrupt service routine (ISR) executes in an execution context imposed by the target interrupt architecture. ISO C does not define ISRs, interrupt attributes, interrupt priorities, or latency semantics.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **ISR constraints**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+An ISR is code entered asynchronously in response to a hardware/software interrupt. The target ABI/compiler defines how the handler is declared and how context is saved/restored. The C body must obey stronger constraints than ordinary task code because it can interrupt arbitrary program state.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+An ISR may run with interrupts masked or partially enabled, on a dedicated exception stack, or using the interrupted stack. Hardware may automatically save registers and status state. Compiler attributes can change prologue/epilogue generation and must match the startup/vector-table mechanism.
 
 ### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+- What state is automatically saved by hardware?
+- Which registers does the ISR compiler convention preserve?
+- Can the ISR nest or be preempted?
+- Which shared objects can it access?
+- Is every access atomic and correctly synchronized?
+- Can the ISR block, allocate, or call non-reentrant code?
+
+`volatile` may be required for MMIO or certain shared flags, but it is not a general substitute for atomicity or synchronization.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+ISR execution consumes latency budget, stack, CPU time, and potentially power. Long handlers increase worst-case interrupt latency and can cause lower-priority interrupts to miss deadlines.
 
 ### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+Keep ISR work bounded and minimal. Move parsing, formatting, allocation, and complex state machines into deferred context unless the architecture explicitly requires otherwise.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
+- Calling a blocking RTOS API from an ISR.
+- Using a non-reentrant library function from interrupt context.
+- Updating multiword shared state without atomicity.
+- Assuming interrupt entry saves all registers used by ordinary C.
+- Failing to acknowledge/clear the source, causing an interrupt storm.
 
 ## Example pattern
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
+static volatile bool rx_pending;
+
+void UART_IRQHandler(void)
 {
-    return x;
+    clear_rx_irq();
+    rx_pending = true;
 }
 ```
+The main/deferred context should perform substantial processing according to the system's synchronization rules.
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Measure entry-to-exit cycles under worst-case conditions, including nesting. Review compiler-generated ISR prologue/epilogue and stack use. Test interrupt storms, simultaneous sources, and recovery from malformed peripheral state.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+An ISR is a **hardware/ABI execution boundary**, not merely a fast C function. Its contract must cover context, latency, stack, shared-state synchronization, peripheral acknowledgement, and permitted callees.
 
 ## Related
 [[00_Chapter_Index]]
