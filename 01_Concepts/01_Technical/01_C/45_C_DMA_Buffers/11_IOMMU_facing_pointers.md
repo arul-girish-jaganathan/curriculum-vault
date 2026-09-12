@@ -1,43 +1,49 @@
 # IOMMU-facing pointers
 
-> Canonical C topic note — chapter 45.
+> Canonical C topic note — Chapter 45. An IOMMU can translate or restrict device-visible addresses, so a CPU virtual pointer is not necessarily a valid DMA address.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **IOMMU-facing pointers**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+A C pointer is meaningful to the CPU's execution environment. A DMA descriptor may instead require an I/O virtual address, bus address, physical address, or device-specific token. The mapping is platform-specific and must not be inferred by casting a pointer.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+A driver normally asks the platform memory-management layer to map a buffer for a device and receives a device-visible address. The mapping may impose permissions, alignment, lifetime, and synchronization requirements.
 
 ### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+- CPU address space vs device address space.
+- Mapping/unmapping lifetime.
+- Address width and truncation.
+- IOMMU permissions.
+- Cache/coherency attributes.
+- Whether the mapping survives suspend/reset.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+IOMMUs are more common in complex SoCs and high-end embedded systems than small MCUs. They can isolate devices and support virtualized or protected DMA, but add mapping setup, TLB behavior, fault handling, and debugging complexity.
 
 ### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+Keep device addresses in explicitly typed integer/address abstractions rather than pretending they are ordinary C pointers. Validate that descriptor fields can represent the complete device address range.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
+- Casting a CPU pointer to `uint32_t` truncates a 64-bit address.
+- Device accesses after an IOMMU mapping is removed.
+- Permissions reject an otherwise valid CPU buffer.
+- Mapping attributes disagree with cache policy.
+- Device reset invalidates mappings.
 
 ## Example pattern
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
+void submit(void *cpu_buf, size_t len)
 {
-    return x;
+    dma_addr_t dev_addr = dma_map_for_device(cpu_buf, len);
+    program_descriptor(dev_addr, len);
 }
 ```
+`dma_addr_t` and mapping operations are platform abstractions, not ISO C constructs.
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Log CPU and device addresses separately when debugging mappings. Test invalid permissions, unmap-before-completion, address-width boundaries, and device reset. Inspect IOMMU fault records where available.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+A device-facing address is **not necessarily a C pointer value**. Treat address-space translation, permissions, lifetime, and cache attributes as explicit parts of the DMA contract.
 
 ## Related
 [[00_Chapter_Index]]
