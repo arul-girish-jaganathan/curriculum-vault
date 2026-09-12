@@ -1,45 +1,45 @@
 # Source-level debugging
 
-> Canonical C topic note — Chapter 41. This note treats the debugger as an observation tool, not as part of the C language semantics. The source program, generated machine code, ABI, debug information, and target state must be kept conceptually separate.
+> Canonical C topic note — Chapter 41. Source-level debugging is a correlation technique between C source, generated code, debug metadata, ABI state, and live target state. The debugger observes execution; it does not define C semantics.
 
 ## Definition
-Source-level debugging is the process of relating C source constructs to the executing program through debug information such as DWARF, PDB, or compiler/debugger-specific formats. A breakpoint on a C line, a displayed local variable, and a source-level call stack are conveniences derived from compiler-generated metadata; ISO C does not define debugger behavior, breakpoint semantics, register display, or the accuracy of debug information.
+Source-level debugging maps C source constructs to the executing program through debug information such as DWARF, PDB, or compiler/debugger-specific formats. ISO C does not define breakpoints, stepping, watch windows, stack unwinding, variable display, or debugger expression evaluation.
 
-The central distinction is:
+The useful mental model is:
 
-`C source -> translation/optimization -> machine instructions + debug metadata -> CPU execution -> debugger observation`
+`C source -> translation -> optimization -> machine code + debug metadata -> CPU execution -> debugger observation`
 
-A debugger can therefore show an expression, variable, or source line that is useful but not literally identical to a runtime object. Optimized code may eliminate, split, merge, reorder, or keep a value only in a register. A source line can correspond to multiple instruction ranges, and one instruction can be associated with more than one source location.
+A source variable is therefore not synonymous with a fixed RAM location. Depending on optimization and ABI, a value can reside in a register, stack slot, several locations over time, be constant-folded, be reconstructed from other values, or have no independently materialized representation. A source line may map to many instruction ranges and an instruction may have imperfect source correspondence.
 
 ## Mechanism and language rules
-The compiler emits machine code and debug metadata while applying the language rules and permitted optimizations. Debug metadata normally maps instruction addresses to source files/lines and describes variable locations or location ranges. It does not make an object exist at runtime when the optimizer has proven that no observable behavior requires it.
+The compiler must preserve the observable behavior required by the C abstract machine, while debug metadata describes how generated instructions relate to source constructs. Optimization can legally change representation and ordering when observable behavior is preserved.
 
 ### What to reason about
-- **Language semantics:** Is the C program itself defined? A debugger cannot repair undefined behavior.
-- **Object identity:** A source variable may occupy a stack slot, register, several locations over time, or no physical location.
-- **Lifetime:** A local object is meaningful only during its lifetime; a debugger's stale display does not extend that lifetime.
-- **Evaluation:** Inspecting an expression may cause debugger-side evaluation or memory reads and should not be confused with the original program evaluation.
-- **Optimization:** `-O2`/`-O3`, inlining, constant propagation, dead-code elimination, register allocation, and tail calls can make source stepping non-linear.
-- **ABI:** Parameter and return values may be in registers rather than memory; stack frames may omit a traditional frame pointer.
-- **Concurrency:** A thread or ISR can change state between observations; a watch window is not a synchronization primitive.
+- **Language semantics:** Is the source program itself defined? Debugging cannot make undefined behavior meaningful.
+- **Object lifetime:** A debugger display does not extend an object's lifetime.
+- **Object identity:** A displayed value may be reconstructed rather than read from the original object representation.
+- **Evaluation:** Debugger-side expression evaluation is separate from the program's original evaluation and may read memory or invoke target-specific mechanisms.
+- **Optimization:** Inlining, constant propagation, dead-code elimination, register allocation, tail calls, and loop transforms affect stepping and variable availability.
+- **ABI:** Parameters and return values may be held in registers; stack frames may omit frame pointers; unwind metadata may be required for reliable backtraces.
+- **Concurrency:** Another thread, ISR, DMA engine, or peripheral can change state between observations.
 
-A useful debugging hierarchy is: first establish the failing externally observable behavior, then identify the relevant state, then establish the instruction path that produced it, and only then interpret source-level variables.
+A strong workflow is: establish the externally visible failure, identify the relevant invariant, capture raw machine state, map addresses to symbols, then interpret source variables in that context.
 
 ## Embedded implications
-On MCUs, source debugging commonly occurs through SWD/JTAG and a hardware debug architecture. Halting the core can change timing, peripheral behavior, watchdog servicing, interrupt latency, DMA progress, and race behavior. Some peripherals continue operating while the CPU is halted; others can be frozen by debug configuration.
+MCU debugging commonly uses SWD/JTAG and a debug probe. Halting the CPU can change interrupt latency, watchdog behavior, peripheral progression, DMA timing, power state, and race windows. Some devices freeze selected peripherals while halted; others continue operating.
 
-Debug information increases artifact size even when it is separated from the production image. Breakpoints and watchpoints are constrained by the target: hardware breakpoints may be limited in number, flash breakpoints may require patching or a debug probe algorithm, and data watchpoints are often limited to a few address comparators.
+Debug builds can also change layout and timing. `-O0` may create stack variables that do not exist in a production `-O2` build, while added logging can remove a race or alter stack pressure.
 
 ### Firmware review angle
-Compare debug and release builds when investigating an optimization-sensitive defect. Do not conclude that a defect is absent because a debug build works. Preserve the exact compiler version, flags, linker script, startup code, map file, image hash, and debug artifact used for the failing binary.
+When a failure is optimization-sensitive, preserve the exact compiler version, flags, linker script, startup code, ELF/debug artifact, map file, image hash, and target configuration. Compare the failing production-equivalent binary against a debug build rather than assuming the debug build is authoritative.
 
 ## Edge cases and failure modes
-1. **“Variable says optimized out.”** This can be correct; the compiler proved that a memory representation was unnecessary.
-2. **Source line appears to execute twice.** Multiple instruction ranges can share line metadata, or control flow may legitimately return to the line.
-3. **Incorrect-looking call stack.** Frame-pointer omission, tail calls, corrupted stack memory, or missing unwind metadata can break unwinding.
-4. **Debugger changes the bug.** Halting, single-stepping, or reading a volatile peripheral register can alter timing or device state.
-5. **Stale register display.** The debugger UI may not have refreshed, or the register may change asynchronously.
-6. **Undefined behavior investigation.** Once UB occurs, source-level observations cannot be used as proof of what the C abstract machine “must” do.
+- **Optimized out:** the compiler proved a separate storage location was unnecessary.
+- **Wrong source line:** line tables are approximate mappings, not a trace of the abstract machine.
+- **Bad backtrace:** stack corruption, tail calls, frame-pointer omission, or missing unwind metadata can defeat unwinding.
+- **Stale display:** UI refresh does not guarantee a stable snapshot.
+- **MMIO side effects:** inspecting a peripheral register can acknowledge, clear, or otherwise alter hardware state.
+- **UB:** after undefined behavior, source-level observations cannot prove what the C abstract machine must have done.
 
 ## Example pattern
 ```c
@@ -59,20 +59,22 @@ void service(void)
 }
 ```
 
-At `-O0`, `n` may have a stack location. At `-O2`, `clamp_counter()` may be inlined and `n` may live entirely in registers. The source remains valid while its physical representation changes.
+At `-O0`, `n` may occupy a stack slot. At `-O2`, `clamp_counter()` may be inlined and `n` may exist only in registers. Both are valid implementations.
 
 ## Verification / debugging
-Use `-g` plus a controlled optimization level for ordinary source debugging, but retain a production-equivalent build for reproducing timing and optimization defects. Inspect disassembly when source stepping becomes misleading. Use debugger commands to examine registers, raw memory, stack frames, and instruction addresses rather than trusting one UI field.
+Build with debug information and a controlled optimization level for normal source debugging, but retain a production-equivalent build for timing and optimization defects. When stepping becomes confusing, inspect disassembly, registers, raw memory, instruction addresses, and the exact ELF/symbol file.
 
-A Staff-level review should ask:
-- What exact binary is running?
-- Which source line-to-address mapping is being used?
-- Is the observed variable optimized, volatile, atomic, shared with an ISR, or DMA-owned?
-- Could halting the CPU change the failure?
-- Can the hypothesis be validated with trace, GPIO timing, counters, logging, or a post-mortem dump without stopping the system?
+Useful checks include:
+- Confirm the running image hash matches the symbol file.
+- Translate the fault PC to an exact instruction and source range.
+- Inspect SP, LR/return address, status registers, and relevant ABI argument registers.
+- Determine whether the object is optimized, volatile, atomic, shared, or hardware-owned.
+- Reproduce with trace, counters, GPIO timing, or persistent fault records if halting changes the bug.
+
+Staff-level questions: What exact binary is running? What source-to-instruction evidence exists? Could the debugger perturb the failure? What independent measurement would falsify the current hypothesis?
 
 ## Staff-level takeaway
-Treat source-level debugging as a **model-to-machine correlation problem**. The debugger is evidence, not authority. For difficult embedded failures, correlate C semantics, compiler transformations, ABI state, instruction addresses, memory ownership, interrupt behavior, and target timing before deciding what the source-level display means.
+Treat source-level debugging as a **model-to-machine correlation problem**. The debugger is evidence, not authority. Difficult firmware failures require correlation of C semantics, compiler transformations, ABI state, instruction addresses, memory ownership, interrupt behavior, and timing.
 
 ## Related
 [[00_Chapter_Index]]
