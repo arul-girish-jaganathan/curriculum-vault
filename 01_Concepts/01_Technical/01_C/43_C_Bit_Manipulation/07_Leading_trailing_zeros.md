@@ -1,49 +1,58 @@
 # Leading/trailing zeros
 
-> Canonical C topic note — Chapter 43. Count-leading-zeros and count-trailing-zeros operations locate the highest or lowest set bit and are building blocks for normalization, priority selection, and integer algorithms.
+> Canonical C topic note — Chapter 43. Counting leading zeros (CLZ) and trailing zeros (CTZ) finds bit positions efficiently, but zero-input behavior must be explicitly defined because many compiler builtins leave it undefined.
 
 ## Definition
-For a fixed-width unsigned integer, CLZ counts zero bits before the highest set bit; CTZ counts zero bits after the lowest set bit. The all-zero input is a critical boundary and must be defined by the chosen API or implementation.
+CLZ counts zero bits above the highest set bit; CTZ counts zero bits below the lowest set bit. For an `N`-bit word, nonzero results are in `0..N-1`.
 
 ## Mechanism and language rules
-C does not historically provide universal `clz`/`ctz` functions. Compiler builtins commonly exist, but many specify undefined behavior for zero. C23 adds standard bit utilities in implementations that support them, but the supported language/library profile must be checked.
+Portable algorithms can test bits iteratively or use binary-search-style masks. Compiler builtins may map to efficient instructions, but their zero-input contracts differ. Never call a primitive with zero unless its specification defines that case.
 
 ### What to reason about
-- What happens for zero?
-- What is the exact width?
-- Is the operand unsigned?
-- Is the returned count used as a shift count?
-- Does the next operation remain within range?
+- Is zero a valid input?
+- What exact operand width is counted?
+- Does the compiler builtin define zero behavior?
+- Is the result used as a shift count or index?
+- Does the target have CLZ/CTZ instructions?
+
+If the result feeds a shift, prove that the resulting shift count is within range.
 
 ## Embedded implications
-CLZ can implement priority encoders, normalization before fixed-point arithmetic, logarithm approximations, bitmap allocation, and efficient packet parsing. Many MCUs have native CLZ instructions, making intrinsic-based code highly efficient.
+These operations are useful for priority bitmaps, scheduler selection, normalization, encoding, and resource allocation. Hardware instructions can make them very fast and deterministic on supported CPUs.
 
 ### Firmware review angle
-A common defect is `1U << ctz(x)` without checking `x != 0`; another is using the result as a shift count equal to the word width. Treat zero as an explicit input case.
+Wrap target builtins with a project-defined zero-safe API when portability matters. Document whether the operation is expected to be constant-time.
 
 ## Edge cases and failure modes
-- Calling an API with zero when zero is outside its domain.
-- Mixing 16-bit logical width with a 32-bit promoted operand.
-- Using a returned count directly as a shift without bounds analysis.
-- Assuming timing is constant across all implementations.
+- Zero input passed to an undefined builtin.
+- Wrong width due to `int` promotion.
+- CLZ result used directly as an invalid shift count.
+- Signed value interpreted as a bit pattern without an explicit contract.
 
 ## Example pattern
 ```c
-unsigned first_set_bit(uint32_t x)
+static unsigned ctz32(uint32_t x)
 {
     if (x == 0U) {
-        return 32U; /* explicit sentinel for this API */
+        return 32U; /* project-defined sentinel */
     }
-    return (unsigned)__builtin_ctz(x);
+    unsigned n = 0U;
+    while ((x & 1U) == 0U) {
+        x >>= 1U;
+        ++n;
+    }
+    return n;
 }
 ```
-The builtin is compiler-specific; production code should hide it behind a portability wrapper or use the project's supported standard API.
+The sentinel `32` is part of the wrapper contract and must not be used as an unchecked shift count.
 
 ## Verification / debugging
-Test zero, one, highest bit, lowest bit, and multiple-bit patterns. Compile with UBSan and warnings where applicable, and inspect the target instruction sequence when latency is important.
+Test zero, one, highest bit, lowest bit, and alternating patterns. Compare portable and target-specific implementations. Verify the compiler builtin's exact zero behavior before wrapping it.
+
+Staff-level questions: Is zero possible at the call site? Is the sentinel type-safe? Does the generated implementation meet timing requirements?
 
 ## Staff-level takeaway
-Bit-count operations are dominated by their **zero-input and width contracts**. Establish those first, then select the implementation that best matches portability, latency, and target instruction support.
+CLZ/CTZ are **boundary-sensitive primitives**. Zero-input semantics and exact width must be part of the API contract, especially when results feed shifts, indexes, or priority calculations.
 
 ## Related
 [[00_Chapter_Index]]
