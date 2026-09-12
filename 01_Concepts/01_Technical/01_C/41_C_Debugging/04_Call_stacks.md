@@ -3,58 +3,90 @@
 > Canonical C topic note — chapter 41.
 
 ## Definition
-A call stack is the runtime chain of active function invocations, represented by stack frames containing some combination of saved registers, return addresses, arguments, local storage, and unwind metadata. C defines function calls and automatic objects, but the exact stack layout and calling convention are implementation/ABI properties.
+A call stack is the runtime structure used to preserve function-call state, typically including return information, saved registers, local storage, and temporary state. The exact layout is defined by the ABI and compiler, not by ISO C.
+
+For debugging, a call stack is a reconstruction of active call frames from machine state. A backtrace is therefore only as reliable as the available stack/frame metadata and the integrity of the stack itself.
 
 ## Mechanism and language rules
-A normal call transfers control to a callee and establishes an activation record according to the target ABI. The compiler may use a frame pointer or omit it, keep values in registers, reuse stack slots, inline calls, perform tail calls, or eliminate frames entirely.
+A normal call conceptually creates a relationship like:
 
-A debugger reconstructs the call chain from:
-1. the current PC and stack/register state;
-2. ABI conventions;
-3. frame/unwind metadata;
-4. debug symbols.
+`caller → argument passing → callee entry → local frame → return state → caller continuation`
 
-A correct-looking source call stack is therefore evidence produced by several layers, not a direct C-language guarantee.
+The ABI determines where arguments and return values travel, which registers are caller/callee-saved, how the stack is aligned, and how the return address is represented.
+
+A compiler may use:
+
+- a frame pointer;
+- a stack pointer plus offsets;
+- frame-pointer omission;
+- shrink-wrapped prologues/epilogues;
+- tail calls;
+- inlining;
+- leaf-function optimizations;
+- register-only locals.
+
+Therefore “one C function = one visible stack frame” is not a language guarantee.
+
+### Unwinding
+Debuggers commonly unwind using frame-pointer chains, DWARF call-frame information, architecture-specific unwind rules, or heuristics. If stack memory is corrupted or the unwinder lacks metadata, a backtrace may stop early or display plausible-looking but false callers.
+
+### Recursion
+Recursive C functions create multiple active invocations of the same function. Each invocation has distinct automatic object instances and call state, subject to the usual lifetime and storage rules.
 
 ## Embedded implications
-Stack analysis is central to MCU reliability. Calculate worst-case stack consumption across nested calls, interrupt preemption, RTOS tasks, fault handlers, and library code. Include compiler-generated spills, alignment padding, interrupt stacking, floating-point context, and alternate exception stacks where applicable.
+Stack analysis is central to MCU reliability because stack memory is finite and often shared with startup/runtime mechanisms. Inspect:
 
-A stack overflow may overwrite another task's stack, global data, saved context, or control-flow state before becoming visible. Guard patterns and MPU stack regions can turn silent corruption into an actionable fault.
+- main/task stack sizes;
+- interrupt stack or exception stacking;
+- nested interrupt depth;
+- compiler-generated call depth;
+- RTOS context-switch frames;
+- guard regions/canaries;
+- bootloader/application stack ownership.
+
+A hard fault may corrupt the very stack required to diagnose it. Capture fault registers and the raw exception frame as early as possible.
 
 ### Example
 ```c
-static void service(void)
+static int parse_level(int x)
 {
-    uint8_t scratch[128];
-    /* ... */
-}
-
-static void task(void)
-{
-    service();
+    if (x <= 0)
+        return 0;
+    return 1 + parse_level(x - 1);
 }
 ```
-The source declares 128 bytes, but the actual frame can be larger due to alignment, saved registers, compiler spills, and ABI requirements.
+The C semantics permit recursion, but target stack consumption depends on ABI frame size, optimization, register allocation, and whether tail-call optimization is applicable.
 
 ## Edge cases and failure modes
-- Frame-pointer omission makes naive stack walking unreliable.
-- Tail-call optimization removes an expected caller frame.
-- Inlining creates logical frames without physical calls.
-- Corrupted stack memory produces a bogus backtrace.
-- An exception frame is not necessarily an ordinary C frame.
-- Mixed C/assembly code can violate debugger unwind assumptions.
-- A stack trace from the wrong binary is meaningless.
+- Stack overflow corrupts return state and local variables.
+- A smashed frame pointer can make a backtrace invalid.
+- Tail-call optimization removes an expected frame.
+- Inlining removes a physical call while retaining an inline logical frame.
+- Interrupt entry can add hardware-created exception state not visible as an ordinary C frame.
+- Fault handlers may run with a different stack or privilege level.
+- Mixed C/assembly or ABI mismatches can break unwinding.
+- LTO can materially change frame structure.
 
 ## Verification / debugging
-For a crash, capture PC, SP, LR/return state, status registers, and the relevant exception frame before attempting recovery. Validate that SP lies inside an expected stack region and that return addresses point into executable memory. Compare the trace against the linker map and disassembly.
+When a backtrace looks suspicious:
 
-For capacity, measure high-water marks using a known fill pattern or hardware stack monitoring. Combine static call-graph analysis with worst-case interrupt nesting rather than relying on average runtime usage.
+1. Record the current PC, SP, LR/return-state register, and architecture fault status.
+2. Inspect raw stack bytes around SP.
+3. Validate stack bounds and alignment.
+4. Compare the reported frame addresses against the linker map.
+5. Disassemble the suspected function prologue/epilogue.
+6. Check whether frame pointers were omitted and whether unwind metadata exists.
+7. Consider stack corruption before trusting a long call chain.
+
+For field failures, save enough registers and stack memory to reconstruct the exception context after reboot.
 
 ## Staff-level takeaway
-A stack trace is a hypothesis about control flow. Trust it only after validating the binary, ABI, stack pointer, unwind metadata, and memory integrity. For embedded architecture, stack budget is a resource contract spanning C code, compiler behavior, interrupts, RTOS context switching, and fault handling.
+A backtrace is evidence, not truth. Treat it as a hypothesis generated from **ABI + stack bytes + unwind metadata + register state**. When the stack is corrupted, switch from symbolic debugging to raw-state reconstruction and establish the first trustworthy frame before reasoning upward.
 
 ## Related
 [[00_Chapter_Index]]
 [[05_Registers]]
 [[06_Memory_inspection]]
 [[08_Core_dumps]]
+[[../36_C_Linkage_ABI/00_Chapter_Index]]
+[[../68_C_Recursion_Stack/00_Chapter_Index]]
