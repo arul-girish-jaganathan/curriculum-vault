@@ -1,61 +1,57 @@
 # Sentinel values
 
-> Canonical C topic note — Chapter 42. A sentinel is a reserved value that represents a special condition such as failure, end-of-sequence, absence, or “not found.” The contract must guarantee that the sentinel cannot be confused with valid data.
+> Canonical C topic note — Chapter 42. A sentinel is a reserved value that represents a special condition such as failure, end-of-sequence, or absence of an object. Its safety depends on proving that the sentinel cannot be confused with valid data.
 
 ## Definition
-Typical sentinels include `NULL` for pointer absence, `EOF` for a stream condition, `-1` for selected integer-returning APIs, or a project-specific constant. The C language does not assign universal meanings to arbitrary sentinel values; the API contract does.
+Common examples include `NULL` for pointer absence, `-1` for an index/error result, zero-length indicators, and protocol-specific marker values. The sentinel must belong to the return-value domain and have an unambiguous interpretation.
 
 ## Mechanism and language rules
-The sentinel must be representable in the return type and outside the valid data domain. A common mistake is selecting a value that is valid today but may become valid after future range expansion.
+A sentinel is safe only if the valid-value domain excludes it or the API carries enough context to distinguish it. Signed/unsigned conversions are a frequent source of bugs: returning `-1` from a function whose type is `size_t` produces a large unsigned value rather than a negative result.
 
 ### What to reason about
-- Is the sentinel outside the complete valid domain?
-- Is signedness conversion safe?
-- Does the caller test before converting the result?
-- Can zero be both valid data and failure?
-- Is the sentinel preserved across wrappers and ABI boundaries?
+- Is the sentinel representable in the declared return type?
+- Can a valid object/data value equal the sentinel?
+- Are signedness conversions involved?
+- Is the caller required to check before using the result?
+- Does zero mean “empty,” “success,” or “not found” in this API?
+- Is the sentinel preserved through serialization or ABI boundaries?
 
-For pointers, `NULL`/a null pointer constant represents a null pointer value; it is not necessarily a bit pattern of all zero bytes. Do not infer pointer representation from integer zero without considering the C rules and target ABI.
+Prefer an explicit status plus output parameter when every data value is potentially valid.
 
 ## Embedded implications
-Sentinels are cheap and deterministic, which suits small APIs and ISR-adjacent code. But overloaded status/data values can create silent bugs in telemetry, packet parsing, sensor readings, or register values where the full numeric range is valid.
+Sentinels are efficient and avoid extra storage, which is attractive in constrained firmware. However, hardware registers and protocol fields often use all bit patterns, making sentinel reservation impossible without sacrificing valid states.
 
 ### Firmware review angle
-Prefer explicit status plus output when the full value domain is required. Reserve sentinel ranges intentionally in protocols and document them as part of the wire contract.
+For driver APIs, document whether `0`, `UINT_MAX`, `NULL`, or another marker is a valid result. Consider enums/status-plus-output when the data domain is exhaustive.
 
 ## Edge cases and failure modes
-- `-1` converted to unsigned becomes a large positive value.
-- `0` may be a valid sensor measurement.
-- A pointer sentinel can be mishandled after integer conversion.
-- A future protocol revision can make the old sentinel a valid payload.
-- A caller may forget to check the sentinel before dereferencing or indexing.
+- `-1` converted to a huge `size_t`.
+- A valid packet length equals the chosen marker.
+- `NULL` is checked too late and dereferenced first.
+- Sentinel meaning changes across abstraction layers.
+- A serialized sentinel collides with legitimate wire data.
 
 ## Example pattern
 ```c
-#define INDEX_NOT_FOUND (-1)
-
-int find_id(const uint16_t *ids, size_t count, uint16_t wanted)
+int find_channel(uint32_t id)
 {
-    for (size_t i = 0; i < count; ++i) {
-        if (ids[i] == wanted) {
-            return (int)i;
+    for (int i = 0; i < CHANNEL_COUNT; ++i) {
+        if (channels[i].id == id) {
+            return i;
         }
     }
-    return INDEX_NOT_FOUND;
+    return -1;
 }
 ```
-This design requires `count` to fit in `int`. If that cannot be guaranteed, return a status separately or use a representation that safely covers the complete index domain.
+The caller must keep the result in a signed type and check it before indexing.
 
 ## Verification / debugging
-Test every boundary around the valid domain and the sentinel. Compile with signed/unsigned warnings enabled. Review all wrappers for preservation of the sentinel and test protocol compatibility when ranges evolve.
+Test the minimum, maximum, and sentinel values explicitly. Compile with conversion/sign warnings. Use boundary-value tests and static analysis to find unchecked sentinel paths.
 
-Staff-level questions:
-- Is the sentinel mathematically outside the valid domain?
-- What happens after integer promotion/conversion?
-- Would a status/output pair communicate the contract more clearly?
+Staff-level questions: Is the sentinel outside the complete valid domain? Would a future extension make it valid? Is a status-plus-output interface clearer and safer?
 
 ## Staff-level takeaway
-A sentinel is safe only when its **collision with valid data is impossible by contract**. Prove that property at API design time and protect it with type choices, warnings, and boundary tests.
+A sentinel is a **compressed contract**. It saves representation overhead only when the reserved value is provably unambiguous and callers consistently validate it before use.
 
 ## Related
 [[00_Chapter_Index]]
