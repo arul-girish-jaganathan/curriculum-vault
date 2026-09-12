@@ -3,41 +3,26 @@
 > Canonical C topic note — chapter 38.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Archive libraries**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+An archive library is a collection of relocatable object files, commonly packaged as a static library. The linker extracts members to satisfy unresolved references rather than automatically copying every member into the image.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
-
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+Traditional archive linking is demand-driven: a member is pulled when it provides a currently unresolved symbol. This makes library order significant in many linkers. Options such as grouping, whole-archive, or explicit object references change extraction behavior.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
-
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+Static libraries are common for drivers, middleware, BSPs, and vendor SDKs. Section garbage collection can further reduce unused code when objects/functions are organized appropriately. Library objects must agree with the application's ABI, compiler options, CPU ISA, floating-point ABI, and runtime assumptions.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
-```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
-```
+- Wrong library order.
+- Duplicate symbols from multiple libraries.
+- Pulling an entire large archive unexpectedly.
+- Mixing incompatible floating-point or CPU ABIs.
+- Library startup hooks being removed by section garbage collection.
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Inspect the linker map to see which archive members were extracted and why. Use symbol tools to verify definitions and undefined references. Rebuild libraries with the same ABI/toolchain contract as the application.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+A static library is not merely a bag of code. Its extraction rules, ABI, section organization, and dependency assumptions directly affect the final firmware image.
 
 ## Related
 [[00_Chapter_Index]]
