@@ -1,54 +1,55 @@
 # Nested interrupts
 
-> Canonical C topic note — Chapter 44. Nested interrupts occur when a higher-priority interrupt preempts an ISR that is already executing. The behavior is target-specific and must be analyzed as an interrupt-priority and stack-depth problem.
+> Canonical C topic note — Chapter 44. Nested interrupts occur when a higher-priority interrupt preempts an active handler. They improve responsiveness but multiply stack, latency, synchronization, and reentrancy complexity.
 
 ## Definition
-With nesting enabled, interrupt context can form a stack: task -> ISR A -> ISR B -> ... . Hardware and startup/runtime code determine what state is saved at each entry. ISO C does not define nesting.
+Whether nesting occurs depends on interrupt masking, priority configuration, CPU architecture, and handler policy. C itself has no interrupt nesting semantics.
 
 ## Mechanism and language rules
-Nested execution increases the number of active contexts and therefore stack consumption. Shared state may be accessed by several priority levels, creating ordering and atomicity requirements beyond ordinary task/ISR interaction.
+On preemption, hardware and/or software saves the interrupted context. The nested handler executes, then the previous context resumes. The exact saved frame, priority rules, tail chaining, and return sequence are architecture-specific.
 
 ### What to reason about
-- Which priorities can preempt which?
-- Are interrupts masked during critical portions?
-- How much hardware/software context is saved per nesting level?
-- Can the same peripheral generate nested events?
-- Are shared structures safe under priority-based preemption?
+- Which priorities may preempt which handlers?
+- What context is saved at each nesting level?
+- Are shared resources reentrant?
+- What is the maximum nesting depth?
+- Can a lower-priority ISR hold a resource needed by a higher-priority ISR?
+- What happens if an interrupt source remains asserted?
 
 ## Embedded implications
-Worst-case interrupt latency and stack use must include maximum nesting. A lower-priority ISR can be delayed by repeated high-priority events, causing starvation or deadline misses.
+Nesting can reduce response latency for urgent events but increases worst-case stack use and makes timing less deterministic. Interrupt storms can create starvation where normal task execution receives insufficient CPU time.
 
 ### Firmware review angle
-Define a maximum nesting depth and verify it under worst-case interrupt arrival. Keep high-priority handlers extremely bounded. Avoid calling complex shared services from multiple interrupt priorities without an explicit serialization strategy.
+Define priority levels based on deadlines and bounded execution. Calculate worst-case nesting rather than measuring only nominal depth. Keep high-priority handlers especially short.
 
 ## Edge cases and failure modes
-- Stack overflow due to unexpected nesting.
-- Priority inversion/starvation from interrupt storms.
-- Shared data updated by multiple priority levels without atomicity.
-- Interrupt source not cleared, causing recursive re-entry.
-- Debugging hides nesting because halting suppresses or changes interrupt behavior.
+- Stack exhaustion from deep nesting.
+- Priority inversion through shared state.
+- Non-reentrant helper called from nested handlers.
+- Interrupt source not acknowledged, causing repeated entry.
+- Critical section masks an interrupt longer than its deadline.
 
 ## Example pattern
 ```c
-void HIGH_IRQHandler(void)
+void HIGH_PRIORITY_IRQHandler(void)
 {
     capture_urgent_event();
-    clear_high_irq();
 }
 
-void LOW_IRQHandler(void)
+void LOW_PRIORITY_IRQHandler(void)
 {
-    queue_event_from_isr();
-    clear_low_irq();
+    capture_deferred_event();
 }
 ```
-The actual priority and nesting policy is configured outside ISO C and must be verified against the MCU architecture.
+The priority relationship is target configuration, not C syntax.
 
 ## Verification / debugging
-Measure worst-case nesting with trace or GPIO instrumentation. Test simultaneous interrupt sources and sustained high-priority load. Validate stack high-water marks and exception-frame decoding.
+Force worst-case nesting and measure stack high-water mark and response latency. Verify priority configuration against the design document and test interrupt storms.
+
+Staff-level questions: What is the maximum nesting depth? Which resources cross priority levels? Is every high-priority handler bounded even when preempting another ISR?
 
 ## Staff-level takeaway
-Nested interrupts are fundamentally a **worst-case resource analysis problem** involving priority, latency, stack, and shared state. Average interrupt behavior is not sufficient evidence for correctness.
+Nested interrupts trade **latency for complexity and stack consumption**. Establish a mathematically defensible priority/nesting policy and design shared state for the resulting preemption model.
 
 ## Related
 [[00_Chapter_Index]]
