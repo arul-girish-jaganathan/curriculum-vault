@@ -3,41 +3,25 @@
 > Canonical C topic note — chapter 40.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Embedded-target limitations**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+Sanitizers and fuzzers require runtime instrumentation, memory, execution time, and often operating-system facilities that may not exist on an MCU. Their absence on target does not make them unsuitable; it changes how evidence is collected.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
-
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+Host instrumentation can validate target-independent C logic. Target testing must cover implementation-specific behavior such as MMIO, interrupts, DMA, alignment, cache/coherency, startup, and actual ABI.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
-
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+Instrumented images can consume substantial flash/RAM, alter timing, change memory layout, and interfere with watchdog or real-time constraints. Fuzzing on target may therefore be selective rather than continuous.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
-```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
-```
+- Assuming host sanitizer results cover target-specific UB.
+- Running instrumentation in timing-critical production-like measurements.
+- Ignoring allocator differences.
+- Testing only valid protocol inputs.
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Partition the test strategy: host sanitizer/fuzz coverage for pure logic, target tests for hardware contracts, and differential tests for representation-sensitive behavior. Document which defect classes each layer can detect.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+Do not ask whether sanitizers “work on the MCU” as a binary question. Ask which semantic boundary is being tested and which evidence is still missing.
 
 ## Related
 [[00_Chapter_Index]]
