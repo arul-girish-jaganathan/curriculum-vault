@@ -1,49 +1,49 @@
 # Shifts
 
-> Canonical C topic note — Chapter 43. Shift operators move the value's bits left or right. Correct reasoning requires the promoted operand type, shift count, signedness, and destination width.
+> Canonical C topic note — Chapter 43. Shift operators move the value's bits left or right, but their safe use requires precise reasoning about operand promotions, width, signedness, and shift count.
 
 ## Definition
-`x << n` shifts bits toward higher positions; `x >> n` shifts toward lower positions. The right operand must be nonnegative and less than the width of the promoted left operand. Violating the count constraint is undefined behavior.
+`x << n` shifts bits toward higher positions and fills low positions with zeros. `x >> n` shifts toward lower positions. For unsigned operands, the value is interpreted modulo the width; for signed operands, left shift has important restrictions and right shift of negative values is implementation-defined in relevant language versions.
 
 ## Mechanism and language rules
-The operands undergo integer promotions. For unsigned operands, left shifts are defined modulo the relevant range subject to the shift-count constraint; right shift of unsigned values is a logical shift. For signed operands, especially negative values and left shifts, the rules are more restrictive. Right shift of a negative signed value is implementation-defined.
+Integer promotions occur before shifting. A shift count must be nonnegative and strictly less than the width of the promoted left operand; violating this is undefined behavior. Left-shifting into or beyond the sign/range of a signed type must not be used as an overflow mechanism.
 
 ### What to reason about
-- What is the promoted width?
-- Is the shift count provably within range?
-- Is the operand signed or unsigned?
-- Is the shifted value intended as a mathematical multiply/divide or bit manipulation?
-- Does the result need a fixed-width representation?
+- What is the promoted operand type?
+- What is its width?
+- Is the shift count validated?
+- Is the value signed or unsigned?
+- Is the result representable in the result type?
+- Does the operation encode a field, scale a number, or perform arithmetic?
 
-Prefer unsigned fixed-width operands for protocol/register manipulation.
+Use unsigned types for bit-level transformations and validate variable shift counts.
 
 ## Embedded implications
-Shifts implement field extraction, scaling, register programming, CRC logic, and bit packing. A compiler may turn constant shifts into efficient instructions, but a variable shift can have different latency across cores.
+Shifts implement register fields, masks, fixed-point scaling, serialization, CRCs, and protocol parsing. Hardware often defines exact 8/16/32-bit widths, so accidental promotion to `int` can produce unexpected intermediate behavior.
 
 ### Firmware review angle
-Use `UINT32_C(1) << bit` only when `bit < 32` is guaranteed. Avoid macros that evaluate a shift expression without validating its width. On narrow MCUs, explicitly sized types prevent accidental promotion surprises.
+Keep field width explicit and avoid expressions whose correctness depends on the target's `int` width. For generated register code, validate shift positions against the silicon specification.
 
 ## Edge cases and failure modes
-- `1 << 31` can be problematic because `1` is an `int`.
-- `x << 32` on a 32-bit promoted operand is undefined.
-- Right shifting a negative signed value is implementation-defined.
-- Left shifting a signed value into an unrepresentable result can be undefined.
-- Applying a shift before masking can invoke UB even if the final masked result would appear harmless.
+- Shift by the type width or greater.
+- Negative shift count.
+- Left shift of a signed value into an invalid range.
+- Unexpected integer promotion of `uint8_t`/`uint16_t`.
+- Right shift of a negative signed value assumed to be logical.
 
 ## Example pattern
 ```c
-uint32_t make_mask(unsigned bit)
-{
-    return (bit < 32U) ? (UINT32_C(1) << bit) : 0U;
-}
+uint32_t field = ((uint32_t)value & 0x1FU) << 8;
 ```
-The explicit bound makes the shift count valid.
+The cast establishes a 32-bit unsigned left operand before the shift.
 
 ## Verification / debugging
-Test counts 0, 1, width-1, width, and values around signed boundaries. Enable compiler shift warnings and run UBSan on host builds where applicable. Inspect generated instructions when shift timing matters.
+Test shift counts 0, 1, width-1, width, and invalid negative values. Enable compiler warnings and use UBSan on host builds where suitable. Inspect generated instructions for timing-critical shifts.
+
+Staff-level questions: What exact width is the operation intended to represent? Could a promotion change the shift domain? Is the shift arithmetic or representation logic?
 
 ## Staff-level takeaway
-Never reason about a shift as “just moving bits.” First establish **promoted type, width, signedness, and valid count**; only then reason about the resulting bit pattern and hardware effect.
+Shift correctness is a **type-and-width problem** before it is a bit-manipulation problem. Establish the operand type, width, and valid count before reasoning about the resulting bit pattern.
 
 ## Related
 [[00_Chapter_Index]]
