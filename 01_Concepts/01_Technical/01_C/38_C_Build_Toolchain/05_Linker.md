@@ -1,30 +1,45 @@
 # Linker
 
-> Canonical C topic note — chapter 38.
-
 ## Definition
-The linker combines relocatable object files and libraries into a final executable image, resolving symbols and assigning addresses according to linker rules. It is where many embedded memory-layout decisions become concrete.
+The **linker** combines relocatable object files and libraries into a final executable image, resolving symbols and relocations and assigning addresses to sections. In embedded systems it is a core architectural tool: it determines where code, constants, initialized data, zero-initialized data, stacks, boot metadata, and special sections live.
+
+## Scope and boundaries
+Linking is largely implementation and object-format specific. ISO C defines source-level translation and program semantics, not ELF symbol binding or linker scripts. The linker must nevertheless produce an executable consistent with the compiler's ABI and the target memory map.
 
 ## Mechanism and language rules
-The linker resolves references, applies relocations, merges sections, selects archive members, defines symbols, and emits an executable or firmware image. Its behavior is primarily toolchain/platform-specific rather than ISO C.
+Conceptually:
+
+```text
+foo.o + bar.o + libraries + startup.o + linker script
+                    |
+                  linker
+                    v
+              ELF / image
+```
+
+The linker resolves undefined references, selects archive members, applies relocations, merges/places sections, defines symbols, and reports unresolved or multiply defined symbols.
+
+### Symbol resolution
+Strong/weak definitions, visibility, archive extraction order, and object-file relationships can determine which implementation is selected. Link order can matter for static archives because members are commonly extracted to satisfy currently unresolved references.
 
 ## Embedded implications
-The linker maps code to flash, initialized data to load/run addresses, zero-initialized data to RAM, stacks/heaps to reserved regions, and vectors/startup sections to hardware-required addresses. It can also discard unused sections with garbage collection.
+The linker maps logical sections into physical flash/RAM regions and may define symbols used by startup code, bootloaders, stacks, heaps, DMA buffers, interrupt vectors, and persistent storage. A successful link does not prove that the memory map is correct; an address can be link-valid but hardware-invalid.
+
+Link-time garbage collection can remove unused sections, while explicit retention rules may be required for vectors, registration tables, metadata, or bootloader-visible symbols.
 
 ## Edge cases and failure modes
-- Multiple strong definitions.
-- Missing symbols or wrong libraries.
-- Archive extraction order causing unresolved references.
-- Overlapping memory regions.
-- Incorrect load versus execution addresses.
-- Garbage collection removing indirectly referenced firmware objects.
+- Multiple incompatible libraries satisfy the same symbol.
+- Archive order changes the selected implementation.
+- A section is garbage-collected even though firmware discovers it indirectly.
+- A symbol crosses a bootloader/application ABI without a stable contract.
+- RAM/flash overflow is hidden until a configuration changes.
+- Relocation range or section placement exceeds architectural limits.
 
 ## Verification / debugging
-Read linker diagnostics and the map file. Inspect section addresses, sizes, symbols, and relocation results. Confirm startup copies `.data` and clears `.bss` according to the linker layout. Validate image boundaries against the device memory map.
+Treat the linker map as a primary review artifact. Check section sizes, addresses, alignment, symbols, memory-region utilization, and retained sections. Inspect ELF symbols and relocations. Compare map files between releases to detect unexpected growth or placement changes.
+
+## Performance, memory, timing and power
+Placement affects flash wait states, cache locality, execute-in-place behavior, RAM access, and DMA accessibility. Dead-section removal reduces image size. Poor placement can increase startup copy time or put hot code/data into slower memory.
 
 ## Staff-level takeaway
-The linker is part of the executable's architecture. Treat the linker script, memory map, symbol contracts, and generated image as reviewed source artifacts rather than opaque build output.
-
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+The linker is where software architecture becomes a concrete memory image. Review the linker script and map with the same seriousness as C source: verify symbol contracts, placement constraints, image boundaries, and failure margins.
