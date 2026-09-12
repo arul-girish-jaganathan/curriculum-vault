@@ -1,34 +1,35 @@
 # Fault containment
 
-> Canonical C topic note — Chapter 42. Fault containment limits the consequences of an error so that one failed component does not corrupt unrelated state or compromise the entire system.
+> Canonical C topic note — Chapter 42. Fault containment limits the blast radius of a failure so that one bad component, input, or hardware state does not corrupt unrelated state or compromise the entire system.
 
 ## Definition
-Containment is an architectural property implemented through boundaries, ownership, validation, state machines, watchdogs, MPU/MMU protections, process/task separation, and controlled recovery. ISO C itself does not provide fault containment; C code participates in a larger execution environment.
+Containment is an architectural property built from ownership, validation, isolation, protection, state machines, watchdogs, MPU/MMU boundaries, task/process separation, and controlled recovery. ISO C itself does not provide isolation.
 
 ## Mechanism and language rules
-Containment begins by identifying what may fail and what must remain trustworthy. A failure contract should specify detection, containment boundary, recovery action, and resulting state. Memory safety defects such as out-of-bounds writes can defeat software containment unless hardware protection or stronger verification catches them.
+A containment contract identifies what may fail, what must remain trustworthy, how the failure is detected, and which boundary prevents propagation. Returning an error is insufficient if memory corruption has already escaped the component.
 
 ### What to reason about
-- Which state can the failing component modify?
-- Which resources must remain available for recovery?
+- What state can the failing component modify?
+- Which memory and resources remain trustworthy?
 - Can corrupted data cross the API boundary?
-- Is recovery idempotent?
+- Is recovery idempotent and bounded?
+- Can the recovery mechanism depend on the failed component?
 - What evidence must survive the fault?
 
-Do not assume that returning an error contains a fault if memory may already be corrupted.
+Separate **error handling** from **fault containment**: an error code communicates information, while containment limits damage.
 
 ## Embedded implications
-Typical containment boundaries include RTOS tasks, protected memory regions, peripheral ownership, communication parsers, and independent watchdog domains. A driver failure may be contained by resetting one peripheral rather than rebooting the whole MCU, provided shared state is still trustworthy.
+Typical boundaries include RTOS tasks, MPU regions, peripheral ownership, communication parser domains, and independent watchdog/recovery domains. A peripheral fault may be isolated by resetting only that peripheral if shared state remains trustworthy.
 
 ### Firmware review angle
-Define a degraded state that is safer than continuing with uncertain state. For safety-related functions, determine whether isolation must be hardware-enforced. Recovery paths need their own timing, stack, and power-failure analysis.
+Choose the smallest effective containment boundary and decide where hardware enforcement is required. Analyze recovery stack, timing, power, and dependency assumptions independently from nominal execution.
 
 ## Edge cases and failure modes
 - Corrupted control data escapes the intended boundary.
 - Recovery uses the same failed resource and loops.
-- Fault handler relies on a corrupted stack or heap.
-- A shared singleton defeats task-level isolation.
-- Partial hardware reset leaves stale peripheral state.
+- Fault handler depends on corrupted stack/heap.
+- Shared global state defeats task isolation.
+- Partial hardware reset leaves stale state.
 
 ## Example pattern
 ```c
@@ -42,19 +43,15 @@ status_t comm_service_step(void)
     return STATUS_OK;
 }
 ```
-This is only containment if `parser_reset()` and all parser-owned state are trustworthy and isolated from unrelated services.
+This is containment only if parser-owned state is isolated and `parser_reset()` is trustworthy.
 
 ## Verification / debugging
-Inject malformed inputs, timeouts, memory pressure, and peripheral failures. Verify that the fault stays within the intended boundary and that recovery reaches a known state. Use MPU faults, watchdog resets, and fault-injection tests where supported.
+Inject malformed inputs, timeouts, memory pressure, peripheral failures, and repeated recovery attempts. Verify that unrelated outputs remain correct and that recovery reaches a known state.
 
-Staff-level questions:
-- What is the smallest effective containment boundary?
-- Which state remains trustworthy after failure?
-- Is recovery safer than reset?
-- What hardware protection is required?
+Staff-level questions: What is the containment boundary? Which state remains trustworthy? What hardware protection is required? What happens if recovery itself fails?
 
 ## Staff-level takeaway
-Containment is **about limiting blast radius**, not merely returning an error. Establish explicit ownership and protection boundaries and define a recovery state that remains safe even when local state is suspect.
+Containment is about **limiting blast radius**, not merely returning an error. Make ownership and protection boundaries explicit and design recovery around the state that remains trustworthy after failure.
 
 ## Related
 [[00_Chapter_Index]]
