@@ -3,41 +3,74 @@
 > Canonical C topic note — chapter 36.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **ABI compatibility**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+**ABI compatibility** means separately built components agree on the machine-level contract needed to exchange calls, objects and data. It is broader than source compatibility. Two programs can compile successfully while remaining ABI-incompatible because of differences in calling convention, data layout, alignment, symbol binding, floating-point mode, compiler options or runtime assumptions.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+ABI compatibility can involve:
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+- fundamental type sizes and alignment;
+- structure/union layout and padding;
+- enum representation where implementation-dependent;
+- calling convention and register preservation;
+- argument and return classification;
+- name/symbol conventions;
+- object visibility and linkage;
+- floating-point ABI;
+- thread-local storage and runtime conventions;
+- compiler-generated initialization/destruction or unwind metadata where applicable.
+
+ISO C guarantees source-language semantics, not a universal binary interface. A project therefore needs a specific ABI specification for each deployment boundary.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+Firmware commonly has ABI boundaries between bootloader and application, ROM libraries and application code, vendor SDK and customer code, multiple compiler versions, and secure/non-secure execution domains.
+
+A source-compatible change such as:
+
+```c
+typedef struct {
+    uint32_t id;
+    uint32_t flags;
+} config_t;
+```
+
+becoming a larger structure can break a precompiled consumer even if both source trees still compile independently.
 
 ### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+Pin architecture, ABI options and compiler configuration in the build system. Record structure sizes/offsets with compile-time checks. For deployed binary interfaces, maintain ABI versioning and compatibility tests instead of relying on source review alone.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
+Typical ABI breaks include:
 
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
+- changing a public struct's member order/type;
+- changing packing or alignment options;
+- switching hard-float/soft-float modes;
+- changing calling-convention attributes;
+- mixing incompatible runtime libraries;
+- removing or renaming exported symbols;
+- compiling one component with a different architecture extension that changes register conventions.
+
+A linker resolving a symbol proves only that the names matched. It does not prove parameter types, structure layout or register conventions match.
 
 ## Example pattern
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
+_Static_assert(sizeof(config_t) == 8, "ABI: config_t size changed");
+_Static_assert(offsetof(config_t, flags) == 4, "ABI: flags offset changed");
 ```
 
+Such checks protect known layout contracts, but they do not replace full ABI validation.
+
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Use ABI-dump tools where available, compiler record-layout output, symbol-table comparisons, disassembly, and cross-version integration tests. Keep a small binary-compatibility test suite that builds producer and consumer independently.
+
+Staff-level questions:
+- Which boundaries must remain binary-compatible?
+- What exact ABI version is deployed?
+- Which source changes are ABI breaks?
+- Can the boundary use opaque handles instead of exposing layouts?
+- Is there an automated compatibility gate in CI?
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+ABI compatibility is a **system property**, not a compiler switch. Treat binary interfaces as versioned contracts and verify them with layout, symbol, calling-convention and integration evidence.
 
 ## Related
 [[00_Chapter_Index]]
