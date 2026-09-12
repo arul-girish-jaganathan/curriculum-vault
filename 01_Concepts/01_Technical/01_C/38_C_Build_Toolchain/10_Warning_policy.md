@@ -1,28 +1,37 @@
 # Warning policy
 
-> Canonical C topic note — chapter 38.
-
 ## Definition
-A warning policy defines which compiler diagnostics are enabled, which are errors, which are reviewed exceptions, and how policy is kept consistent across configurations and toolchains. Warnings are implementation diagnostics, not ISO C requirements.
+A **warning policy** defines which compiler diagnostics are enabled, which are errors, which are reviewed exceptions, and how the policy evolves. Warnings are not merely stylistic feedback; many identify constructs that can lead to undefined behavior, portability problems, truncation, suspicious control flow, or API misuse.
+
+## Scope and boundaries
+Warnings are compiler diagnostics, not proof of correctness. A clean warning build can still contain runtime defects, and a warning can be a false positive or a deliberate extension. Policy should therefore combine compiler diagnostics with static analysis, testing, and code review.
 
 ## Mechanism and language rules
-Use strong baseline warnings, language-specific warnings, conversion/sign/format diagnostics, and toolchain-specific checks where justified. Separate third-party code from product code rather than globally disabling useful diagnostics.
+A strong baseline commonly includes high-value general warnings plus language-specific warnings, with compiler-version differences explicitly handled. Warning options should be scoped narrowly when suppression is necessary:
+
+```c
+/* Prefer fixing the root cause; localize unavoidable suppression. */
+```
+
+Treat warnings as a categorized risk signal: correctness, portability, maintainability, generated-code noise, or intentional extension.
 
 ## Embedded implications
-Warnings catch truncation, signedness errors, missing prototypes, format mismatches, unreachable paths, and suspicious constructs before they reach hardware. Treating warnings as errors can prevent regressions but requires a controlled migration and documented exceptions.
+Embedded builds should pay particular attention to integer conversions, sign changes, format strings, pointer casts, alignment, unreachable code, missing prototypes, enum handling, initialization, and implicit declarations. A new compiler version may emit new diagnostics; the policy must distinguish genuine regressions from toolchain noise.
+
+Third-party/vendor code can be built under a different warning policy, but the boundary and justification should be explicit.
 
 ## Edge cases and failure modes
-- Global suppression hiding unrelated defects.
-- New compiler versions turning diagnostics into build failures unexpectedly.
-- Generated/vendor code polluting product warning budgets.
-- Treating every warning as equally severe.
+- `-w` or equivalent globally disables useful diagnostics.
+- `-Werror` is applied blindly to generated/vendor code and blocks builds.
+- Local suppressions outlive the defect that motivated them.
+- Warning output changes because the build used a different compiler mode.
+- A warning is silenced without recording why it is safe.
 
 ## Verification / debugging
-Keep warning flags version-controlled. CI should build representative configurations and fail on policy violations. Suppress locally and narrowly, with a reason and preferably a toolchain-version scope.
+Version-control the warning flags. Run clean builds in CI and record compiler version. Track warning counts and categories. Review every suppression with owner, reason, scope, and expiry/revalidation criteria.
+
+## Performance, memory, timing and power
+Warnings generally do not affect generated code, but some diagnostic-related options or optimization/debug combinations can. More importantly, warning-driven fixes often remove accidental conversions or unreachable paths that otherwise affect correctness and performance.
 
 ## Staff-level takeaway
-A warning policy is an engineering control: it reduces defect injection while keeping signal high. The goal is not zero text in the compiler log; it is zero unexplained diagnostic risk.
-
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+A warning policy is a **risk-management system**. Keep the signal high, make exceptions explicit, and ensure the build fails on defects that the organization has decided are unacceptable.
