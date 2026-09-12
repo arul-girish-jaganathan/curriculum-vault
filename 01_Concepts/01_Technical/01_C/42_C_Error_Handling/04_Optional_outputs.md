@@ -1,43 +1,57 @@
 # Optional outputs
 
-> Canonical C topic note — chapter 42.
+> Canonical C topic note — Chapter 42. An optional output is an output object a caller may omit, usually represented by a nullable pointer. The API contract must define whether `NULL` means “do not produce,” “not supported,” or an invalid argument.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Optional outputs**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+A function such as `status_t read_value(value_t *out)` may accept `out == NULL` to indicate that the caller does not need the result. ISO C defines null pointer semantics, but whether a particular API accepts a null pointer is entirely contractual.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+The callee must check the pointer before dereferencing it when null is permitted. The contract should state whether the operation itself remains valid without the output and whether output storage is modified on failure.
 
 ### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+- Is `NULL` explicitly permitted?
+- Is the pointer required to be aligned and point to writable storage?
+- Is the output initialized on every success path?
+- Is partial output possible on failure?
+- Can the caller pass an aliased input/output object?
+
+A nullable output is not a license to silently ignore an invalid pointer. Distinguish “optional” from “required but unchecked.”
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+Optional outputs can reduce unnecessary copies and RAM use. They are useful for APIs that can cheaply answer a status-only query. However, repeated nullable parameters can make contracts hard to understand and can hide ownership/lifetime requirements.
 
 ### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+For safety-critical interfaces, prefer explicit API variants or a result/status object when optionality becomes complex. Document whether an output is produced before a timeout or only after complete hardware transfer.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
+- Dereferencing a permitted null output causes UB.
+- Writing an output before discovering an error leaves ambiguous partial state.
+- Passing the same object as multiple outputs can create aliasing/ordering problems.
+- Treating an optional output as always initialized causes stale-data bugs.
 
 ## Example pattern
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
+status_t adc_read(uint16_t *sample)
 {
-    return x;
+    uint16_t value = hardware_read_adc();
+    if (sample != NULL) {
+        *sample = value;
+    }
+    return STATUS_OK;
 }
 ```
+The contract must still define what happens if hardware acquisition fails and whether `sample` remains untouched.
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Unit-test `NULL`, valid aligned storage, boundary values, failure paths, and aliasing combinations. Static analysis should verify that nullable parameters are checked before dereference.
+
+Staff-level questions:
+- Does optionality actually simplify the API?
+- Is the output contract atomic on failure?
+- Can a result type communicate success and value more clearly?
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+Optional outputs are a useful C pattern when **nullability and output validity are explicit contracts**. Keep the number of states small and test every combination of pointer presence and operation result.
 
 ## Related
 [[00_Chapter_Index]]
