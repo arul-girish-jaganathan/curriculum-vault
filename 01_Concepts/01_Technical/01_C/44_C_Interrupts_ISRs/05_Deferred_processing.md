@@ -1,49 +1,61 @@
 # Deferred processing
 
-> Canonical C topic note — Chapter 44. Deferred processing separates urgent interrupt capture from substantial work performed later in task or scheduler context.
+> Canonical C topic note — Chapter 44. Deferred processing moves non-urgent interrupt work into task/thread context while the ISR performs only time-critical capture and acknowledgement.
 
 ## Definition
-The ISR records an event and schedules or signals a deferred handler. Common mechanisms include queues, ring buffers, task notifications, event flags, software interrupts, and RTOS work queues.
+Common mechanisms include flags, counters, ring buffers, RTOS queues, task notifications, event bits, and bottom-half/work-queue models. The handoff defines an ownership boundary between interrupt and normal execution.
 
 ## Mechanism and language rules
-The boundary requires a safe handoff. Data captured by the ISR must remain valid until the consumer finishes. A flag, index, or queue operation must obey the concurrency model; `volatile` alone is insufficient for general synchronization.
+The producer and consumer must share state through a defined synchronization mechanism. A plain non-atomic shared variable can create a data race in a C11 concurrent model; `volatile` alone does not provide atomicity or ordering.
 
 ### What to reason about
-- Is the queue operation ISR-safe?
-- What happens when the queue is full?
-- Can events be coalesced or lost?
-- Is ordering preserved?
-- Who owns the buffer after enqueue?
+- What data is captured before hardware changes it?
+- Who owns the buffer at each stage?
+- Can producer and consumer run concurrently?
+- What memory ordering publishes the data?
+- What happens on queue overflow?
+- Is the consumer guaranteed to run before hardware storage is exhausted?
 
 ## Embedded implications
-Deferred processing improves interrupt latency but moves work into task latency and queueing constraints. A producer faster than the consumer eventually fills finite storage. The overflow policy must be explicit: drop newest, drop oldest, merge events, raise an alarm, or reset.
+Deferred work reduces ISR latency but adds queueing latency. Buffer depth must cover worst-case bursts, not average event rate. Event coalescing is acceptable only when the event semantics permit it.
 
 ### Firmware review angle
-Size queues from worst-case burst rate, not average rate. Account for scheduler latency and higher-priority work. For hard real-time systems, derive a bound on backlog and processing time.
+Document producer rate, consumer service time, queue depth, overflow policy, and maximum end-to-end latency. Keep ISR-to-task synchronization primitives dedicated to that context where possible.
 
 ## Edge cases and failure modes
-- Queue overflow silently drops critical events.
-- ISR writes into a buffer before the consumer has finished reading it.
-- Deferred handler runs after the hardware state has changed.
-- Priority inversion or starvation delays processing.
+- Queue overflow silently drops data.
+- Flag coalesces multiple events when each event matters.
+- Consumer reads data before publication is ordered.
+- Buffer is reused while DMA/consumer still owns it.
+- Deferred task starvation defeats the latency budget.
 
 ## Example pattern
 ```c
-struct event { uint16_t id; uint16_t data; };
+static sample_t queue[QUEUE_CAPACITY];
 
-void TIMER_IRQHandler(void)
+void ADC_IRQHandler(void)
 {
-    clear_timer_irq();
-    queue_push_from_isr((struct event){EVENT_TICK, 0});
+    sample_t s = ADC_DATA;
+    queue_push_from_isr(s);
+}
+
+void adc_task(void)
+{
+    sample_t s;
+    while (queue_pop(&s)) {
+        process_sample(s);
+    }
 }
 ```
-The queue API must explicitly support ISR context and define full-queue behavior.
+The queue must define atomicity, ownership, overflow, and memory-order semantics.
 
 ## Verification / debugging
-Stress burst rates, queue-full conditions, nested interrupts, scheduler delays, and consumer stalls. Measure interrupt latency and event age from capture to processing.
+Stress maximum interrupt bursts, delayed consumers, queue-full conditions, and task preemption. Measure both ISR time and end-to-end event latency. Add counters for dropped/coalesced events.
+
+Staff-level questions: What is the worst burst? Is the queue dimensioned mathematically? Which events can be coalesced? What is the maximum deferred latency?
 
 ## Staff-level takeaway
-Deferred processing is a **rate-matching and ownership boundary**. It is correct only when event capacity, overflow policy, synchronization, and worst-case service latency are explicitly engineered.
+Deferred processing trades **ISR latency for queueing latency and storage**. Size and synchronize the handoff from worst-case rates and make overflow behavior an explicit system contract.
 
 ## Related
 [[00_Chapter_Index]]
