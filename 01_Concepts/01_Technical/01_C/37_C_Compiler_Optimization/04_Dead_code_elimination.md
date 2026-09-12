@@ -3,41 +3,40 @@
 > Canonical C topic note — chapter 37.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Dead-code elimination**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+Dead-code elimination (DCE) removes computations whose results cannot affect required observable behavior. A statement that looks useful to a human is removable if its value is never used and its side effects are not observable under the C abstract machine.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+Compilers perform local and global DCE after building control-flow and data-flow information. Unreachable branches, unused temporaries, redundant stores, and whole functions may disappear. A call is removable only when the compiler can establish that its effects are irrelevant; ordinary function calls are not assumed pure without evidence.
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
-
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
-
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
-
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
+int f(int x)
 {
-    return x;
+    int unused = x * 42;
+    return 7;
 }
 ```
 
+The calculation of `unused` can disappear. A volatile access, I/O operation, atomic operation, or call with required side effects generally cannot be treated as dead merely because its return value is unused.
+
+Undefined behavior matters: once execution reaches UB, the optimizer is not required to preserve the apparent path that preceded it.
+
+## Embedded implications
+DCE is valuable for eliminating unused features and shrinking flash/RAM. It also explains why “dummy reads,” delay loops, debug variables, and defensive-looking calculations may vanish. Link-time garbage collection can extend dead-code removal to sections and unused functions across translation units.
+
+For safety code, a requirement should be represented by a real observable action or verified invariant, not by code that merely “looks like it does something.”
+
+## Edge cases and failure modes
+- Busy-wait delay loops removed because the result is unused.
+- Diagnostics removed because they only update an unobserved local.
+- Expected initialization removed when no defined read follows.
+- Assuming a debugger-visible variable must exist in optimized code.
+- Marking objects volatile merely to defeat DCE rather than defining the hardware contract.
+
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Inspect optimized assembly and linker map files. Use compiler warnings for unused results and static analysis for unreachable paths. If code must remain for a real external effect, identify that effect explicitly and test it.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+Ask “what observable contract keeps this code alive?” If the answer is only source-code intent, the design is fragile. Make required effects explicit and let dead-code elimination expose unnecessary complexity.
 
 ## Related
 [[00_Chapter_Index]]
