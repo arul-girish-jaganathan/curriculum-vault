@@ -1,43 +1,62 @@
 # Optimized-code debugging
 
-> Canonical C topic note — chapter 41.
+> Canonical C topic note — Chapter 41. Debugging optimized C requires accepting that the compiler may legally transform the implementation while preserving the observable behavior required by the language.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Optimized-code debugging**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+Optimized-code debugging means diagnosing a program built with optimization enabled. C source constructs may be inlined, reordered, folded, eliminated, merged, vectorized, or represented only transiently in registers. Debug information attempts to describe these transformations but cannot restore a simple source-to-instruction correspondence.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+The as-if rule permits any transformation that preserves required observable behavior. A debugger's expectation that “execution reaches this line and then changes this variable” is not a C requirement. Undefined behavior also removes the guarantees needed to reason about optimized execution.
 
 ### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+- Is the source variable still materialized?
+- Was the function inlined or tail-called?
+- Did constant propagation eliminate a branch?
+- Was an expression reordered because the C semantics permit it?
+- Is the observed behavior actually synchronization-sensitive or undefined?
+- Does `volatile`, atomic access, or another observable side effect constrain optimization?
+
+Never add `volatile` merely to make a debugger display a variable. It changes program semantics and can hide a design defect rather than solve it.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+Optimization is essential for code size, execution time, power, and real-time behavior. Debugging only `-O0` can miss register pressure, instruction scheduling, race windows, stack differences, and timing-sensitive defects present in production.
+
+For MCU firmware, compare a reproducible release-equivalent binary with a diagnostic build that changes as little as possible. Optimization level itself can alter flash footprint enough to change placement, cache behavior, interrupt timing, or stack usage.
 
 ### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+Preserve symbols and debug information separately from production code when policy permits. Use trace/logging or targeted compiler options instead of globally disabling optimization. If changing optimization makes a bug disappear, treat that as evidence of timing/layout/UB sensitivity, not proof that the optimizer is broken.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
+- **“Next line” jumps backward/forward:** line tables map instruction ranges, not a step-by-step abstract execution trace.
+- **Variable unavailable:** optimized away or represented in a location range.
+- **Breakpoint changes bug:** stopping changes timing.
+- **Adding logging fixes defect:** instrumentation changes scheduling and memory layout.
+- **Different optimization changes fault address:** UB, race, stack layout, or timing may be involved.
 
 ## Example pattern
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
+static uint32_t compute(uint32_t x)
 {
-    return x;
+    uint32_t y = x * 10U;
+    if (y > 100U) {
+        return 100U;
+    }
+    return y;
 }
 ```
+The compiler may fold constants, use conditional instructions, inline the function, and keep `y` only in a register. The debugger may show no stable storage location for `y`.
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Reproduce with the exact production compiler and flags. Inspect disassembly and generated maps. Use breakpoints sparingly and prefer trace or persistent diagnostics for timing-sensitive failures. Compare behavior across `-O0`, `-Og`, and release optimization only as an experiment to isolate sensitivity.
+
+Staff-level questions:
+- What transformation explains the source-level surprise?
+- Does the C standard actually require the observed sequence?
+- Is there UB or a data race?
+- Can a binary-level invariant be measured without perturbing timing?
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+A production debugger must be treated as a **compiler-output debugger**, not merely a source debugger. Understand the language guarantees, inspect generated instructions, and choose evidence that preserves the real timing and concurrency characteristics of the system.
 
 ## Related
 [[00_Chapter_Index]]
