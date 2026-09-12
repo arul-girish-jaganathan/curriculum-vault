@@ -1,25 +1,35 @@
 # Defect pattern detection
 
-> Canonical C topic note — chapter 39.
-
 ## Definition
-Defect-pattern detection searches for recurring syntactic or semantic shapes associated with defects: unchecked return values, dangerous casts, missing bounds checks, double release, use-after-release patterns, suspicious shifts, and unsafe string operations.
+**Defect pattern detection** identifies source constructs that frequently correlate with bugs, vulnerabilities, or maintainability failures. Unlike purely syntax-oriented warnings, pattern detection encodes engineering knowledge such as unchecked return values, suspicious memory operations, dangerous conversions, missing bounds checks, or incorrect API sequences.
+
+## Scope and boundaries
+A pattern is evidence, not proof. The same construct can be valid in one context and defective in another. High-quality rules therefore combine syntax, types, control flow, dataflow, and project-specific contracts.
 
 ## Mechanism and language rules
-Pattern rules range from simple AST matching to dataflow and interprocedural reasoning. High-quality rules distinguish actual contracts from superficial syntax.
+Examples include:
+
+```c
+memcpy(dst, src, len); /* rule asks: are dst/src/len mutually valid? */
+```
+
+A strong analyzer can trace `len` to determine whether it is bounded by the destination size. Other patterns include unchecked allocator results, use-after-close/resource misuse, suspicious shifts, integer truncation, ignored error codes, and incorrect locking sequences.
 
 ## Embedded implications
-Firmware-specific patterns include MMIO access-width mistakes, interrupt-shared state without synchronization, unchecked DMA lengths, timeout omissions, integer truncation at hardware boundaries, and unsafe register read-modify-write sequences.
+Firmware-specific patterns include ISR calling blocking APIs, accessing non-reentrant drivers from multiple contexts, writing read-only configuration, unsafe DMA buffer ownership, missing timeout handling, unchecked hardware status, and incorrect register read-modify-write sequences. Project-specific APIs should be modeled so the analyzer understands ownership and preconditions.
 
 ## Edge cases and failure modes
-A pattern can be safe under a local invariant that the analyzer cannot see. Conversely, a superficially safe pattern can fail when the invariant is not actually enforced. Avoid blanket suppressions.
+- A simple syntactic pattern generates many irrelevant findings.
+- A dangerous operation is hidden behind a wrapper the analyzer does not understand.
+- Macros produce different code in different configurations.
+- Generated/vendor code overwhelms application findings.
+- A suppression hides a recurring architectural defect.
 
 ## Verification / debugging
-For each finding, identify the violated contract, reproduce if practical, and document the fix pattern. Prefer APIs that make unsafe states hard to express.
+Prioritize rules by consequence and confidence. Validate high-severity findings through code review, targeted tests, or a minimal reproducer. Add custom rules for repeated defects found in incident reviews, then measure whether the rule catches future instances without excessive noise.
+
+## Performance, memory, timing and power
+Static pattern checks add analysis time but no target runtime cost. Preventing a memory or concurrency defect can save substantial debug and field-recovery effort.
 
 ## Staff-level takeaway
-The highest-value static rules encode architectural failure modes, not merely stylistic preferences. Build a rule set around the product's real defect history.
-
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+Turn recurring defects into **executable engineering knowledge**. When a bug appears repeatedly, ask whether its pattern can be detected automatically and enforced at the earliest practical stage.
