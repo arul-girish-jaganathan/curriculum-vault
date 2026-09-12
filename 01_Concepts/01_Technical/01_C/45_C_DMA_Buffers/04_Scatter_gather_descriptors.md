@@ -1,43 +1,49 @@
 # Scatter-gather descriptors
 
-> Canonical C topic note — chapter 45.
+> Canonical C topic note — Chapter 45. Scatter-gather DMA uses a list of descriptors so one transfer can consume or produce multiple non-contiguous memory regions.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Scatter-gather descriptors**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+A descriptor typically contains an address, length, control flags, and linkage to the next descriptor. The descriptor layout is a hardware ABI and must match exact width, alignment, endianness, ownership, and valid-bit semantics.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+A C structure can model a descriptor, but its layout must not be assumed to match hardware without verification. Padding, pointer representation, integer width, and endian assumptions matter. Hardware often requires physical/device addresses rather than C virtual pointers.
 
 ### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+- Descriptor size and alignment.
+- Address width and address space.
+- Ownership bit ordering.
+- Cache visibility.
+- Ring termination and chaining rules.
+- Lifetime of buffers referenced by descriptors.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+Scatter-gather reduces copying and can support fragmented buffers, but increases descriptor management complexity and error recovery paths. A descriptor may remain hardware-owned after the CPU believes the transfer is complete unless the completion semantics are correctly understood.
 
 ### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+Keep descriptor creation and validation centralized. Use static assertions for expected structure size/offsets where the implementation permits, and explicit serialization when hardware layout is not naturally represented by the ABI.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
+- Hardware follows a descriptor whose buffer has been freed/reused.
+- Cache contains stale descriptor ownership bits.
+- Address width truncates a high address.
+- Reserved descriptor bits are set incorrectly.
+- Ring wrap creates a cycle or skips an entry.
 
 ## Example pattern
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
+struct dma_desc {
+    uint32_t addr;
+    uint16_t len;
+    uint16_t flags;
+};
 ```
+This is a software model only until the hardware specification confirms layout and access requirements.
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Test single, chained, maximum-length, empty, wraparound, error, and reset cases. Dump descriptors and compare against hardware-visible memory after cache synchronization.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+A DMA descriptor is an **external ABI consumed by hardware**. Treat its layout, ownership, address space, and lifetime as a formal contract rather than ordinary C structure data.
 
 ## Related
 [[00_Chapter_Index]]
