@@ -1,63 +1,60 @@
 # Memory inspection
 
-> Canonical C topic note — Chapter 41. Memory inspection reads raw target bytes and interprets them using C object representation, ABI, linker layout, and target memory-map knowledge.
+> Canonical C topic note — Chapter 41. Memory inspection compares raw bytes and addresses with the C object's type, lifetime, alignment, ownership, and target memory map. A debugger's memory window is not itself a proof of C-level validity.
 
 ## Definition
-Memory inspection is examination of target memory at an address, usually as bytes, words, or typed values. ISO C does not define debugger memory windows. It does define object representations and rules around accessing objects through appropriate lvalues and character types, but debugger reads occur outside the C abstract machine.
+Memory inspection is examining bytes at selected addresses to determine object state, corruption, layout, stack contents, heap metadata, descriptors, or hardware state. C defines object representations and access rules, but debugger commands that read arbitrary addresses are target-specific.
+
+The expert workflow is to ask both **what bytes are present** and **whether interpreting those bytes as this C object is valid**.
 
 ## Mechanism and language rules
-A debugger can display the same bytes as hexadecimal, signed/unsigned integers, pointers, floating-point values, or structures. Interpretation is meaningful only when the type, alignment, endianness, ABI representation, and lifetime are known.
+Objects have representations consisting of bytes. Structure padding may contain unspecified values; trap representations can make some interpretations invalid on implementations that support them; alignment requirements constrain valid typed access. A debugger can display raw bytes without performing a C lvalue access, so its ability to show bytes does not mean program code could safely dereference the same address.
 
 ### What to reason about
-- What object, if any, owns this address?
-- Is the object alive at the time being inspected?
-- What is its alignment and representation?
-- What is the target endianness?
-- Is the region RAM, flash, MMIO, retention RAM, or unmapped space?
-- Is another CPU, ISR, DMA engine, or peripheral modifying it?
-- Could a debugger read trigger a hardware side effect?
+- What memory region contains the address: stack, heap, static RAM, flash, MMIO, shared memory, or DMA buffer?
+- What object lifetime and type apply?
+- Is the address aligned for the intended type?
+- Does the debugger read trigger hardware side effects?
+- Are caches, memory protection, remapping, or bus faults involved?
+- Could another execution agent change the memory between observations?
 
-Raw bytes can reveal stack corruption, buffer overruns, allocator metadata damage, stale DMA descriptors, and corrupted return addresses, but a byte pattern alone does not prove a particular C-level cause.
+Interpret endianness explicitly when converting byte sequences to multi-byte values.
 
 ## Embedded implications
-MCUs often have sparse and aliased address maps. Invalid reads may generate bus faults. Memory windows over peripheral registers can clear flags or consume FIFO data. Some memories are inaccessible while clocks or power domains are disabled.
+MCU memory maps often include aliased regions, tightly coupled memory, external RAM, flash, peripheral registers, and reserved holes. A seemingly valid address may be inaccessible in the current privilege mode or may have read side effects.
 
-Linker map files are essential for interpreting addresses: they connect symbols and sections to RAM/flash regions. Stack boundaries, heap boundaries, DMA pools, bootloader regions, and retained crash storage should be known before inspecting arbitrary addresses.
+DMA introduces a second writer and cache maintenance can make CPU-visible bytes differ from memory visible to a peripheral. Inspect descriptors, ownership bits, buffer addresses, and cache state together.
 
 ### Firmware review angle
-For cache-enabled systems, distinguish CPU cache state from backing memory and DMA visibility. A debugger may observe memory that differs from what a CPU or peripheral currently sees. For multicore targets, establish which observer and memory domain is being examined.
+Maintain a documented memory map and symbolized inspection procedure. For persistent fault records, preserve raw bytes plus metadata such as image version, CPU context, region identity, and length rather than only a formatted interpretation.
 
 ## Edge cases and failure modes
-- **Wrong type interpretation:** identical bytes can represent different values under different types.
-- **Endian confusion:** `0x12345678` has different byte order in memory depending on target endianness.
-- **Dead object:** memory may have been reused after lifetime ended.
-- **MMIO side effects:** reading a register is not equivalent to reading ordinary RAM.
-- **Stale cache:** displayed RAM may not reflect a device's view.
-- **Corrupt debugger context:** a halted CPU does not freeze every bus master.
+- **Wrong interpretation:** viewing bytes with the wrong type or endianness.
+- **Padding confusion:** assuming every structure byte is initialized meaningfully.
+- **MMIO side effects:** a read changes status or clears an event.
+- **Stale cache:** CPU and DMA views are inconsistent.
+- **Out-of-lifetime memory:** an address remains readable after the C object no longer exists.
+- **Corrupted debugger context:** the inspection itself can disturb the fault evidence.
 
 ## Example pattern
 ```c
-struct packet {
+struct header {
+    uint16_t type;
     uint16_t length;
-    uint8_t payload[8];
+    uint32_t sequence;
 };
-
-static struct packet p;
 ```
-To inspect `p`, first resolve its symbol address and size, then examine raw bytes, then interpret fields according to the ABI. Do not assume that a debugger's structure rendering is proof of the wire format.
+When inspecting a serialized or in-memory header, first establish `sizeof`, alignment, padding, and byte order. Do not assume the in-memory representation is a wire-format representation.
 
 ## Verification / debugging
-Start from a known symbol or linker address. Dump raw bytes, compare them with expected initialization, inspect adjacent guard regions, and correlate changes with code or DMA ownership. For corruption, take snapshots before and after the suspected operation and use watchpoints where hardware supports them.
+Capture both raw bytes and typed interpretations. Compare the observed layout with compiler output (`sizeof`, `_Alignof`, `offsetof`) and the target memory map. For suspected corruption, inspect surrounding canaries and the last known owner of the region.
 
-Staff-level questions:
-- What memory region is this address in?
-- Which agent owns it?
-- What representation should be expected?
-- Is cache/coherency involved?
-- Could inspection itself have side effects?
+Use debugger memory reads cautiously on MMIO. For DMA problems, compare CPU cache state, memory barriers, descriptor ownership, and peripheral-visible memory rather than relying on a single memory window.
+
+Staff-level questions: What makes this address a valid object? Who can write it? Which memory domain is being observed? Is the debugger reading the same storage that the failing agent used?
 
 ## Staff-level takeaway
-Memory inspection is most useful when **address -> region -> object -> owner -> representation -> timeline** is established. Hex dumps are evidence; interpretation requires C object rules plus the target's ABI and memory architecture.
+Memory inspection is strongest when **bytes, object semantics, ownership, and hardware memory topology agree**. Raw bytes are evidence, but their meaning must be established rather than assumed.
 
 ## Related
 [[00_Chapter_Index]]
