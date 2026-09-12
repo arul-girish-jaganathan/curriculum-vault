@@ -1,28 +1,40 @@
 # ThreadSanitizer
 
-> Canonical C topic note — chapter 40.
-
 ## Definition
-ThreadSanitizer (TSan) instruments concurrent programs to detect many data races and synchronization errors. It is a dynamic analysis tool; it does not prove that a program is race-free.
+**ThreadSanitizer (TSan)** dynamically detects many data races and synchronization errors in multithreaded programs. It instruments memory accesses and synchronization operations, then reports conflicting accesses that occur without a valid happens-before relationship under the modeled concurrency system.
+
+## Scope and boundaries
+TSan is primarily a host-platform testing tool. Support for embedded targets is limited and highly architecture/runtime dependent. It cannot prove absence of all races and may not understand custom synchronization, inline assembly, interrupt semantics, or hardware concurrency correctly.
 
 ## Mechanism and language rules
-TSan tracks memory accesses and synchronization events and reports conflicting accesses lacking the required synchronization relationship. Correct interpretation depends on the language memory model and the actual synchronization primitives.
+Consider:
+
+```c
+int ready;
+int value;
+
+/* One thread writes value/ready while another reads them. */
+```
+
+If accesses to shared objects lack proper synchronization, TSan can report the conflicting locations and call stacks. In portable C, `_Atomic` operations and mutex/thread primitives establish the relevant synchronization; `volatile` does not.
 
 ## Embedded implications
-Many MCU firmware projects use RTOS tasks, interrupts, DMA, and lock-free structures rather than host threads. TSan is strongest for host-side concurrency models; interrupt interactions and device memory require separate reasoning.
+A strong embedded workflow compiles portable concurrency logic for a host process and runs it under TSan. This can find races in queues, state machines, worker threads, and shared configuration. ISR/main-loop concurrency remains a separate target concern because an interrupt is not simply another C11 thread.
+
+Custom RTOS primitives need correct annotations/modeling or targeted tests; otherwise TSan may not recognize their synchronization semantics.
 
 ## Edge cases and failure modes
-- Assuming `volatile` makes accesses race-free.
-- Running only single-threaded tests.
-- Suppressing races without determining ownership.
-- Expecting TSan to model MMIO or every RTOS primitive automatically.
+- Assuming TSan can model interrupt races or DMA.
+- Using volatile and believing the race is fixed.
+- Custom atomics/assembly are invisible to the analyzer.
+- Race manifests only under a workload not exercised by the test.
+- False confidence because one schedule happened to be clean.
 
 ## Verification / debugging
-Build a host model using real synchronization primitives where possible. Reproduce reports with deterministic tests and inspect both conflicting accesses. For target concurrency, combine code review, atomicity analysis, RTOS checks, and hardware stress tests.
+Run deterministic and stress tests under TSan, especially around queues, shutdown, initialization, and error paths. Preserve both conflicting stack traces. Replace custom synchronization with standard primitives in host tests where feasible, or explicitly model its semantics.
+
+## Performance, memory, timing and power
+TSan can impose very high CPU and memory overhead, making it unsuitable for production firmware and many real-time target environments. Its purpose is to explore concurrency bugs under controlled test conditions.
 
 ## Staff-level takeaway
-TSan is a race detector, not a concurrency design. The real contract is ownership, synchronization, atomicity, and lifetime; the tool provides evidence about violations of that contract.
-
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+Use TSan to validate the **C-level concurrency contract**, while separately validating ISR, DMA, cache, and hardware synchronization on the target. A race detector complements rather than replaces architectural concurrency design.
