@@ -1,50 +1,55 @@
 # Latency budgeting
 
-> Canonical C topic note — Chapter 44. Interrupt latency is the time from an interrupt-causing event to the required service point. Correct budgeting uses worst-case bounds, not average ISR execution time.
+> Canonical C topic note — Chapter 44. Interrupt latency is a system-level deadline budget from an external event to the required response. Average timing is insufficient; worst-case interference must be included.
 
 ## Definition
-A latency budget decomposes a deadline into interrupt recognition, hardware entry, masking delays, higher-priority work, handler execution, deferred processing, and required peripheral response. ISO C does not define any of these timings.
+A latency budget decomposes response time into interrupt recognition, hardware entry, interrupt masking, higher-priority work, handler execution, synchronization, deferred processing, and peripheral response. ISO C defines none of these timing properties.
 
 ## Mechanism and language rules
-Compiler-generated instructions, memory accesses, cache/flash wait states, branches, and function calls contribute to execution time. C semantics permit transformations that preserve observable behavior, so timing must be measured on the actual compiler/target configuration.
+Compiler output, instruction scheduling, memory accesses, cache/flash wait states, branches, calls, and synchronization primitives determine actual execution. The production compiler and target configuration therefore matter.
 
 ### What to reason about
-- Maximum interrupt-disabled interval.
-- Higher-priority interrupt interference.
-- Worst-case ISR path.
-- Peripheral synchronization/acknowledgement latency.
-- Deferred queue/scheduler delay.
-- Measurement uncertainty.
+- Maximum interrupt-disabled duration.
+- Higher-priority interference.
+- Worst-case handler path.
+- Peripheral acknowledgement/synchronization time.
+- Queue and scheduler delay.
+- Clock/frequency changes.
+- Measurement uncertainty and instrumentation overhead.
+
+A budget should include margin rather than targeting exactly the deadline.
 
 ## Embedded implications
-Missing a deadline can cause data loss, control instability, FIFO overflow, or safety failure. Budgeting must include bursts and nesting, not just nominal interrupt rates.
+Missing latency can overflow hardware FIFOs, destabilize control loops, lose communication frames, or violate safety timing. Burst rates and nested interrupts matter more than nominal periodic rates.
 
 ### Firmware review angle
-Write a latency budget with explicit assumptions and margin. Re-measure after compiler, clock, flash wait-state, RTOS, or driver changes. GPIO timestamps and hardware trace are often more trustworthy than debugger single-stepping.
+Write the budget as explicit assumptions and measurements. Re-measure after compiler, clock, RTOS, flash wait-state, driver, or priority changes. Prefer GPIO timestamps, cycle counters, trace, or hardware timers over debugger stepping for timing evidence.
 
 ## Edge cases and failure modes
 - Average timing hides rare worst-case paths.
-- A logging statement changes the timing under test.
-- Interrupt masking in unrelated code consumes the budget.
-- Queue backlog converts a short ISR into large end-to-end latency.
-- Frequency scaling invalidates cycle-based assumptions.
+- Logging changes the schedule.
+- Unrelated critical sections consume the budget.
+- Deferred queue backlog dominates end-to-end latency.
+- Dynamic frequency scaling invalidates fixed cycle assumptions.
 
 ## Example pattern
 ```c
 void ADC_IRQHandler(void)
 {
     uint16_t sample = ADC_DATA;
-    clear_adc_irq();
+    ADC_CLEAR = ADC_IRQ_FLAG;
     adc_queue_push_from_isr(sample);
 }
 ```
-The ISR's execution time is only one component of the end-to-end sample-processing deadline.
+ISR execution is only one component of the sample-to-processing deadline.
 
 ## Verification / debugging
-Measure min/max and distribution under worst-case load, including flash/cache state and interrupt nesting. Test maximum event rates and long critical sections. Track the budget in code-review and release criteria.
+Measure distributions and worst-case values under maximum CPU, interrupt, and communication load. Include nesting and longest critical sections. Validate event-rate assumptions and queue depth.
+
+Staff-level questions: What is the deadline? Which components consume the budget? What is the worst-case interference? How much margin remains after measurement uncertainty?
 
 ## Staff-level takeaway
-Latency is a **system budget**, not a function-local property. Allocate it across interrupt masking, priority interference, ISR work, deferred processing, and hardware response, then validate the worst case on the production configuration.
+Latency is a **system budget**, not a property of one ISR. Allocate it across masking, priority interference, handler work, deferred processing, and hardware response, then prove the worst case on the production configuration.
 
 ## Related
 [[00_Chapter_Index]]
