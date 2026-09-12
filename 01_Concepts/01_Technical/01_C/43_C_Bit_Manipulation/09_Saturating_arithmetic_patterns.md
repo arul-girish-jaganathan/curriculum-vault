@@ -1,43 +1,52 @@
 # Saturating arithmetic patterns
 
-> Canonical C topic note — chapter 43.
+> Canonical C topic note — Chapter 43. Saturating arithmetic clamps a result to a representable minimum or maximum instead of wrapping or invoking signed-overflow undefined behavior.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Saturating arithmetic patterns**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+For unsigned values, ordinary C arithmetic wraps modulo the type's range. For signed values, overflow is undefined behavior. Saturation intentionally detects the boundary before performing an overflowing operation and returns the limit instead.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+For unsigned addition, overflow can be detected with `a > UINT_MAX - b`. For unsigned subtraction, underflow can be detected with `a < b`. For signed arithmetic, perform a range check in a wider type when one is guaranteed to represent the mathematical result, or use a carefully proven comparison before the operation.
 
 ### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+- What is the exact numeric range?
+- Can the intermediate expression overflow before the check?
+- Are operands promoted to a wider type?
+- Is wraparound actually desired?
+- Is the operation required to be constant-time?
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+Saturation is common in audio, control, sensor scaling, fixed-point arithmetic, and safety limits. It prevents wraparound from turning a large positive command into a negative or small value.
 
 ### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+Saturation policy should be part of the algorithm contract. On DSP-capable MCUs, native saturating instructions may outperform portable C, but compiler intrinsics should be isolated behind a target abstraction when portability matters.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
+- Checking `a + b > MAX` is already too late if `a + b` overflows.
+- Signed overflow is not a valid way to detect overflow.
+- Saturating at an application limit differs from saturating at the C type limit.
+- Conversions after a saturated calculation can still truncate.
 
 ## Example pattern
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
+#include <stdint.h>
+#include <stdint.h>
+
+uint32_t sat_add_u32(uint32_t a, uint32_t b)
 {
-    return x;
+    if (a > UINT32_MAX - b) {
+        return UINT32_MAX;
+    }
+    return a + b;
 }
 ```
+The subtraction in the comparison is safe for unsigned arithmetic.
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Test zero, maximum, one below maximum, exact overflow boundary, and large operands. Use property tests to verify commutativity where expected and that the result never leaves the defined range.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+Saturation is fundamentally an **overflow-avoidance design**, not a post-processing clamp. Prove the intermediate arithmetic is defined, then evaluate whether target-specific instructions are justified by measured performance requirements.
 
 ## Related
 [[00_Chapter_Index]]
