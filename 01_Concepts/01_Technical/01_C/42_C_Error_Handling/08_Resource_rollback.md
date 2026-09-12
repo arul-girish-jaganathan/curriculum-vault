@@ -1,43 +1,62 @@
 # Resource rollback
 
-> Canonical C topic note — chapter 42.
+> Canonical C topic note — Chapter 42. Rollback restores externally visible state when a multi-step operation cannot complete. Cleanup releases resources; rollback additionally undoes state changes already committed to hardware or persistent data.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Resource rollback**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+If an operation changes state through steps A, B, and C and C fails, rollback attempts to return the system to a defined prior state. Full rollback is not always possible, so the contract must distinguish atomic, partially applied, and compensating behavior.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+C provides no transactional primitive for arbitrary resources. The implementation must record enough state to undo completed steps and execute compensating operations in reverse dependency order.
 
 ### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+- Which state changes are reversible?
+- What information is needed to restore the previous state?
+- Can rollback itself fail?
+- Is the prior state externally observable?
+- Is the operation idempotent?
+- Does persistence require journaling or commit markers?
+
+A robust design defines an explicit state machine rather than scattering ad-hoc undo operations across error branches.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+Rollback can apply to peripheral configuration, power sequencing, communication sessions, firmware updates, and configuration storage. Hardware may have irreversible actions, such as triggering an external actuator or consuming a one-time command; these cannot be rolled back and require a different failure contract.
 
 ### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+For nonvolatile configuration, use transactional records, versioning, CRC, and commit markers rather than assuming a failed write can simply be undone. For hardware sequences, identify which transitions are irreversible before designing recovery.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
+- Rollback uses stale state and restores the wrong configuration.
+- A rollback step fails, leaving a partially restored system.
+- Concurrent actors modify state during the transaction.
+- Power loss occurs during rollback.
+- An irreversible action was performed before failure.
 
 ## Example pattern
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
+typedef enum { ST_IDLE, ST_PREPARED, ST_ACTIVE } state_t;
+
+status_t activate(void)
 {
-    return x;
+    if (prepare_hw() != STATUS_OK) return STATUS_IO;
+    if (start_hw() != STATUS_OK) {
+        (void)restore_hw();
+        return STATUS_IO;
+    }
+    return STATUS_OK;
 }
 ```
+The real contract must define whether `restore_hw()` can fail and what state remains if it does.
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Inject failures after each state transition and test rollback under reset/power interruption where applicable. Verify idempotence and that concurrent access is blocked or coordinated during the transaction.
+
+Staff-level questions:
+- Is rollback actually possible for every side effect?
+- What is the defined state after rollback failure?
+- Would a state machine or journal be clearer?
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+Rollback is a **state-restoration contract**, not merely cleanup. Explicitly model reversible and irreversible effects and define a safe degraded state when complete restoration is impossible.
 
 ## Related
 [[00_Chapter_Index]]
