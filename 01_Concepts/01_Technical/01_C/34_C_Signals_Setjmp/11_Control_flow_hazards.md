@@ -3,41 +3,98 @@
 > Canonical C topic note — chapter 34.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Control-flow hazards**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+Non-local control flow introduces execution paths that are not represented by ordinary C call/return structure. Signals can asynchronously enter a handler; `longjmp()` can bypass intermediate returns. These mechanisms create **control-flow hazards** when resource ownership, object lifetime, or invariants depend on normal structured execution.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+Normal C control flow provides an approximately lexical model:
+
+```text
+call -> callee -> return -> caller
+```
+
+A signal can interrupt this model, while `longjmp()` creates a direct transfer:
+
+```text
+A -> B -> C
+     ^     |
+     |_____|
+       jump
+```
+
+The compiler must preserve the semantics of these constructs, but it cannot infer application-level cleanup obligations that C does not encode.
 
 ### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+- Which stack frames can be bypassed?
+- Which automatic objects are still alive at the destination?
+- Which variables can have indeterminate values after a non-local jump?
+- Which locks, allocations, transactions, and hardware states are live?
+- Can an asynchronous handler interrupt a non-reentrant subsystem?
+- Does static analysis understand the transfer, or will reviewers need explicit annotations?
+
+Control-flow complexity is a safety concern even when the behavior is technically defined. The question is not only **"is this legal C?"** but **"can humans and tools prove every path?"**
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+Firmware often has hidden control-flow dependencies: watchdog recovery, interrupt dispatch, scheduler context switches, fault handlers, boot phases, and peripheral state machines. Non-local jumps can cross those boundaries without restoring their invariants.
+
+For safety-oriented systems, prefer explicit status propagation, state machines, supervisor tasks, and reset-based recovery. These make failure edges visible in code review and static analysis.
 
 ### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+Build a control-flow graph for every use of `longjmp()` or asynchronous handler. Mark:
+- resource acquisition/release;
+- critical-section entry/exit;
+- interrupt masking;
+- peripheral transactions;
+- ownership transfer;
+- logging/telemetry;
+- watchdog operations.
+
+Then prove that every non-local edge preserves the required invariants.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
+Typical hazards:
+- skipped cleanup causing leaks or deadlocks;
+- double cleanup after partial recovery;
+- stale pointers into abandoned stack state;
+- compiler-visible variables differing from programmer intuition after `longjmp()`;
+- handler recursion or re-entry;
+- recovery from an already-corrupted stack;
+- fault paths that invoke the same broken service that caused the fault.
 
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
+A particularly dangerous anti-pattern is `goto`/`longjmp`/signal use chosen merely to reduce indentation. Control-flow syntax should serve a verifiable architecture, not cosmetic convenience.
 
 ## Example pattern
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
+static int process(void)
 {
-    return x;
+    int rc = acquire();
+    if (rc != 0) {
+        return rc;
+    }
+
+    rc = operate();
+    if (rc != 0) {
+        release();
+        return rc;
+    }
+
+    release();
+    return 0;
 }
 ```
 
+Explicit cleanup makes the recovery path visible and is generally easier to analyze than non-local transfer.
+
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Enable compiler warnings and static analysis. Draw the control-flow graph for exceptional paths. Test injected failures at every cleanup boundary. Use debugger backtraces carefully because a non-local jump intentionally changes the normal call stack relationship.
+
+Staff-level questions:
+- Does the architecture remain understandable without the non-local jump?
+- Which invariants are implicit today?
+- Can ownership be represented structurally instead?
+- What happens if the failure occurs inside the recovery path itself?
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+The core risk of non-local control flow is **hidden edges in the program's proof of correctness**. Prefer mechanisms whose failure paths are explicit, bounded, and mechanically analyzable.
 
 ## Related
 [[00_Chapter_Index]]
