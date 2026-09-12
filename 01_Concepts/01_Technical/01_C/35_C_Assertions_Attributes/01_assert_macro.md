@@ -3,41 +3,61 @@
 > Canonical C topic note — chapter 35.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **assert macro**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+`assert` is a macro defined by `<assert.h>` that checks a scalar expression when assertions are enabled. If the expression compares equal to zero, the implementation reports a diagnostic and calls `abort()`; when `NDEBUG` is defined before `<assert.h>` is included, the standard assertion mechanism is disabled. The exact diagnostic text and termination details are implementation-defined. `assert` is a debugging/contract mechanism, not a recovery mechanism.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+The expression is evaluated when assertions are enabled, so it may have side effects. This makes `assert(x++)` dangerous: compiling with `NDEBUG` can remove the increment entirely and change program behavior. Therefore an assertion must not contain required work.
+
+```c
+#include <assert.h>
+
+assert(ptr != NULL);
+assert(len <= BUFFER_SIZE);
+```
+
+The expression is converted to a scalar truth value. A false assertion normally results in diagnostic output followed by `abort()`. The macro may evaluate its argument zero times when disabled. `NDEBUG` affects `assert` at preprocessing time, so build configuration and include ordering matter.
 
 ### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+- Never put required state updates, I/O, locking, reference counting, or MMIO writes inside an assertion.
+- Distinguish an invariant check from an input-validation/error-handling path.
+- Consider whether evaluating the expression itself can fault or invoke non-reentrant code.
+- Verify whether the assertion remains enabled in the production configuration.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+On firmware, a failed assertion may stop the CPU, reset the device, enter a fault loop, or invoke a platform-specific diagnostic hook. Logging a large formatted message from an assertion can consume substantial flash, stack, CPU time, and power.
+
+Assertions should be designed around the system's failure policy: fail-stop for safety-critical invariant violations, controlled degradation for recoverable faults, or telemetry-and-reset for field devices. ISR assertions must avoid unsafe reporting paths.
 
 ### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+Compare Debug, Release, manufacturing, bootloader, and safety builds. Check `NDEBUG`, linker dead-code removal, stack usage, watchdog interaction, and whether assertion handlers are reachable from interrupt/fault contexts.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
+Common defects include side effects in the expression, assuming assertions validate external input, using assertions for security checks that disappear in production, and relying on a particular diagnostic string.
 
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
+A subtle trap is:
+```c
+assert(config != NULL);
+use(config);       /* still executes with NDEBUG */
+```
+
+If `config == NULL` is a real runtime error, use explicit validation instead.
 
 ## Example pattern
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
+static bool queue_push(queue_t *q, item_t item)
 {
-    return x;
+    assert(q != NULL);
+    assert(q->count <= QUEUE_CAPACITY);
+    /* No required side effects belong in either assertion. */
+    return queue_push_impl(q, item);
 }
 ```
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Build once with assertions enabled and once with `-DNDEBUG`; inspect the generated code and test both paths. Use static analysis to flag assertion side effects and test that the failure handler records enough context without recursively failing.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+Treat `assert` as an executable statement of an invariant. A Staff engineer should be able to identify which conditions are impossible by design, which are valid runtime errors, and which failure policy applies when an invariant is violated.
 
 ## Related
 [[00_Chapter_Index]]
