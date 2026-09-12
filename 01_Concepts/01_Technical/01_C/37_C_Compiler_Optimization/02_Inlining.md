@@ -1,47 +1,47 @@
 # Inlining
 
-> Canonical C topic note — chapter 37.
-
 ## Definition
-Inlining replaces a function call with an implementation-derived expansion of the function body. In C, `inline` is primarily a linkage/definition-related language facility and an optimization hint; it does **not** require the compiler to inline a call. Modern compilers make the optimization decision from cost models, optimization level, profile data, visibility, and target architecture.
+**Inlining** replaces a call to a function with code derived from the function body. It is primarily an optimization, although the C `inline` specifier also participates in the language's rules for function definitions and linkage. A critical distinction is that writing `inline` does **not** command the compiler to inline a call.
+
+## Scope and boundaries
+C semantics remain the source of truth. Whether a call is actually inlined depends on the implementation, optimization level, target cost model, visibility, translation-unit boundaries, recursion, code size, and build options. `static inline`, external `inline`, and compiler-specific attributes have different linkage/definition consequences.
 
 ## Mechanism and language rules
-Inlining can remove call/return overhead and expose caller arguments and surrounding control flow to constant propagation, dead-code elimination, register allocation, and vectorization. A function can therefore be optimized differently when inlined than when emitted as an out-of-line function.
+Inlining can remove call/return overhead, expose constants, propagate values, simplify branches, and enable further optimizations. For example:
 
 ```c
-static inline uint32_t set_bit(uint32_t v, unsigned n)
+static inline uint32_t min_u32(uint32_t a, uint32_t b)
 {
-    return v | (UINT32_C(1) << n);
+    return a < b ? a : b;
 }
 ```
 
-`static inline` in a header is common because each translation unit can have its own internal definition without exporting one external symbol. Plain `inline` has subtle C linkage rules; do not assume C++ inline semantics. The exact emitted out-of-line copy is implementation-dependent.
+A compiler may emit a conditional move, branch, or other equivalent sequence, or keep an actual call. The source keyword is not an assembly directive.
 
-### Cost model
-Inlining is a trade-off: fewer calls and more optimization opportunity versus larger code, instruction-cache pressure, flash usage, register pressure, and potentially worse timing. A larger function can increase stack usage after expansion even if the source function itself has a small frame.
+### `static inline`
+For header-defined small helpers, `static inline` is commonly used because each translation unit can have its own internal-linkage definition and the compiler can choose to inline it or emit a local out-of-line copy. This avoids an external definition requirement in many ordinary utility-header designs.
 
-### Recursion and indirect calls
-Recursive functions cannot be blindly expanded indefinitely. Function pointers can prevent direct inlining unless the compiler proves the target. LTO can recover opportunities across translation units.
+### External linkage
+`inline` with external linkage is more subtle because ISO C defines rules for inline definitions and external definitions. Do not copy C++ inline habits into C without checking the C standard and compiler mode. A public API often has a normal external definition in one `.c` file and an appropriate declaration in its header.
 
 ## Embedded implications
-On MCUs, call overhead can matter in tiny hot paths, but flash is often scarcer than CPU cycles. Inlining a large parser or protocol state machine can increase image size and instruction-cache misses. For hard real-time code, measure worst-case timing after final link rather than assuming “inline is faster.”
+Inlining can reduce function-call latency and improve ISR or driver hot paths, but aggressive inlining increases instruction-cache pressure, flash consumption, and sometimes worst-case timing variability. On small MCUs without caches, code-size growth can still increase flash fetch cost or affect placement. Inlining can also increase stack pressure when formerly shared code becomes duplicated or when larger expressions require more temporaries.
 
-Headers containing many `static inline` functions can multiply generated code across translation units. Link-time identical-code folding or other toolchain features may reduce duplication, but this is not a portable C guarantee.
+For register-level helpers, keep MMIO semantics explicit. Inlining a `volatile` access does not remove the access, but surrounding ordinary operations can still be optimized according to their contracts.
 
 ## Edge cases and failure modes
-- Treating `inline` as a mandatory optimization.
-- Putting large non-static inline definitions in public headers and creating linkage problems.
-- Ignoring C's distinct inline-definition rules.
-- Assuming inlining always reduces latency.
-- Breaking debugability or traceability with excessive expansion.
-- Measuring only average execution time instead of code size and worst-case latency.
+- Assuming `inline` guarantees inlining.
+- Putting non-`static` definitions in headers and creating multiple-definition/linkage problems.
+- Using compiler-specific `always_inline` without understanding diagnostics or build modes.
+- Excessive inlining causing code bloat and worse instruction-cache behavior.
+- Debugging optimized code as though every source call still exists.
+- Measuring a microbenchmark in isolation and assuming the same result after LTO.
 
 ## Verification / debugging
-Inspect compiler optimization reports and disassembly. Compare code size with and without the candidate function. Measure cycle counts on the target for hot paths and inspect stack usage. Test both LTO and non-LTO builds when they are production options.
+Use compiler optimization reports when available, `-fdump-*`/remarks or equivalent diagnostics, and inspect assembly. Compare call graphs and code-size reports before and after a change. Confirm that public ABI remains unchanged if callers depend on the function symbol.
+
+## Performance, memory, timing and power
+Potential benefits include fewer branches, better constant propagation, better register allocation, and reduced call overhead. Costs include duplicated instructions, larger flash images, longer build times, and possible cache/I-cache degradation. On embedded targets, optimize based on measured hot paths rather than making every function inline.
 
 ## Staff-level takeaway
-Choose inlining from evidence: hotness, call overhead, code size, cache behavior, ABI boundaries, and timing requirements. `static inline` is a useful source-organization pattern, but the optimizer remains in control of the final machine code.
-
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+Treat inlining as a compiler cost-model decision. Design functions so that the optimizer *can* inline them when useful, but preserve clean interfaces and correct linkage. For performance claims, prove the generated code and measure the target; do not infer inlining from the presence of the keyword.
