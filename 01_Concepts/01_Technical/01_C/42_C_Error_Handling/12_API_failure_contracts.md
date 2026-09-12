@@ -1,54 +1,50 @@
 # API failure contracts
 
-> Canonical C topic note — Chapter 42. An API failure contract defines preconditions, failure representation, output validity, ownership, side effects, recovery expectations, and timing behavior when an operation cannot complete normally.
+> Canonical C topic note — Chapter 42. An API failure contract defines preconditions, postconditions, failure state, output validity, ownership, side effects, retry semantics, concurrency behavior, and timing guarantees when an operation cannot complete normally.
 
 ## Definition
-A function signature alone rarely tells callers what failure means. A robust contract states what inputs are valid, which outputs are produced, what resources are consumed, what state changes may occur, which errors are possible, and whether the operation is retryable.
+A function signature rarely captures the meaning of failure. A strong contract answers: what inputs are valid, what outputs are produced, what state may change, what resources are consumed or transferred, which failures are possible, and whether the caller may retry.
 
 ## Mechanism and language rules
-Contracts are expressed through documentation, types, assertions, static analysis annotations, and implementation checks. ISO C does not provide a universal contract system, so teams must establish conventions.
+Contracts are communicated through types, documentation, assertions, static-analysis annotations, naming conventions, and implementation checks. ISO C has no universal contract language, so consistency must come from project policy.
 
 ### What to reason about
-- Preconditions: pointer validity, range, state, alignment, ownership.
-- Postconditions: output validity, state transition, resource ownership.
-- Failure postconditions: untouched output, partial output, rollback, degraded state.
-- Concurrency: blocking, reentrancy, ISR safety, atomicity.
-- Timing: bounded execution and timeout semantics.
+- **Preconditions:** pointer validity, range, state, alignment, ownership.
+- **Success postconditions:** outputs, state transitions, ownership.
+- **Failure postconditions:** unchanged output, partial output, rollback, degraded state.
+- **Concurrency:** blocking, reentrancy, ISR safety, atomicity.
+- **Timing:** worst-case execution and timeout semantics.
+- **External effects:** whether hardware or communication activity has already occurred.
 
-The strongest contract makes invalid states difficult to represent rather than merely documenting them.
+The best contract makes invalid states difficult to represent and makes ambiguous recovery impossible.
 
 ## Embedded implications
-Embedded APIs often cross hardware boundaries. A `write()`-like function may mean “copied into a software buffer,” “accepted by the driver,” or “transmitted on the wire.” Those are different postconditions and must not be conflated.
+A driver call such as `transmit()` may mean “copied to a queue,” “DMA started,” or “wire transmission completed.” These are materially different success conditions. Buffer lifetime and ownership must be explicit when hardware retains a pointer.
 
 ### Firmware review angle
-Document whether calls may block, whether interrupts must be enabled, whether DMA retains buffers, and which reset/power states are legal. Stable error contracts are especially important when drivers are reused across MCU variants.
+Document blocking behavior, interrupt context restrictions, DMA retention, reset/power-state requirements, and error translation. Stable failure contracts are essential when drivers are reused across MCU variants.
 
 ## Edge cases and failure modes
 - Success reported before the requested external effect occurs.
 - Output partially modified on failure without documentation.
-- Timeout returns while DMA continues using the caller's buffer.
+- Timeout returns while DMA still owns the caller's buffer.
 - Retry duplicates a non-idempotent command.
-- Error translation loses the information needed for recovery.
+- Error translation loses recovery-critical information.
 
 ## Example pattern
 ```c
 /* Contract: on success, *bytes_sent is valid; on failure it is unchanged. */
 status_t transmit(const uint8_t *data, size_t len, size_t *bytes_sent);
 ```
-The implementation can enforce the output guarantee by writing a local temporary and committing it only on success.
+The implementation can enforce the failure-output rule by computing into local state and committing the caller-visible result only on success.
 
 ## Verification / debugging
-Turn each contract statement into tests: invalid inputs, failure injection, timeout, ownership, output validity, concurrency, and recovery. Review public APIs for undocumented side effects and use static analysis annotations where supported.
+Turn every contract clause into tests: invalid inputs, exact boundaries, injected failures, timeout, output validity, ownership, concurrency, retry, and recovery. Review APIs for undocumented side effects and use static-analysis annotations where available.
 
-Staff-level questions:
-- Can the contract be expressed in the type system?
-- Is success defined in terms of the actual external effect?
-- What remains valid after failure?
-- Can the caller safely retry?
-- What timing and ownership guarantees cross the boundary?
+Staff-level questions: Can the contract be expressed in the type system? Is success defined by the actual external effect? What remains valid after failure? Is retry safe? What timing and ownership guarantees cross the boundary?
 
 ## Staff-level takeaway
-A failure contract is the **behavioral ABI of an API**. Treat it as a first-class design artifact, because ambiguity about failure is a major source of integration defects even when the underlying C code is syntactically correct.
+A failure contract is the **behavioral ABI of an API**. Treat it as a first-class design artifact because ambiguity about failure causes integration defects even when the underlying C implementation is correct.
 
 ## Related
 [[00_Chapter_Index]]
