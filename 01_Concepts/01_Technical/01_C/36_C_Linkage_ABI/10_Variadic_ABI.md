@@ -3,41 +3,67 @@
 > Canonical C topic note — chapter 36.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Variadic ABI**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+A **variadic ABI** defines how arguments beyond the named parameters of a variadic function are physically passed and later recovered by `va_list` machinery. ISO C specifies the `stdarg.h` interface and default argument promotions; register-save areas, overflow areas, stack alignment and register allocation are ABI/compiler details.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+Consider:
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+```c
+void logf(const char *fmt, ...);
+```
+
+The caller applies default argument promotions to variadic arguments. For example, `float` becomes `double`, and integer types subject to integer promotion become `int` or `unsigned int` as appropriate. The callee initializes a `va_list` with `va_start` and retrieves arguments with `va_arg` using the expected promoted type.
+
+An ABI may pass early arguments in registers and later arguments in stack memory. A variadic function can therefore need metadata or state describing where the next unnamed argument resides. On some architectures, floating-point and integer arguments use separate register classes, requiring the compiler to preserve enough state for `va_arg` traversal.
+
+`va_list` is intentionally opaque. Code must not inspect its representation or assume it is a pointer.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+Variadic formatting is convenient but can be expensive in flash, cycles and stack. It is usually a poor primitive for tiny ISR logging paths. Prefer typed event records or fixed-format queues when deterministic behavior matters.
+
+Hard/soft floating-point ABI differences can be especially important because variadic calls must obey the same ABI assumptions as their fixed arguments while applying default promotions.
 
 ### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+Audit every variadic API for bounded output, context restrictions, stack depth and ABI consistency. Keep `va_list` lifecycle correct across wrappers; use `va_copy` where required rather than assigning it blindly.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
+The most dangerous defect is a type mismatch:
 
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
+```c
+logf("%u", (uint64_t)counter); /* format does not match argument type */
+```
+
+The callee's `va_arg` operation must match the actual promoted argument type. A format string does not provide runtime type metadata; it is a convention.
+
+Passing a `float` and retrieving `float` is wrong because the caller passes a promoted `double`. Narrow integer types may likewise arrive as `int`/`unsigned int`.
+
+Forwarding a `va_list` twice without respecting its consumption state is another common bug. On implementations where `va_list` is not a simple pointer, assignment may not create an independent traversal state.
 
 ## Example pattern
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
+void trace(const char *fmt, ...)
 {
-    return x;
+    va_list ap;
+    va_start(ap, fmt);
+    trace_v(fmt, ap); /* trace_v must document va_list consumption */
+    va_end(ap);
 }
 ```
 
+If another traversal is required, use the implementation-supported `va_copy` facility.
+
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Test each supported ABI with mixed integer/floating arguments and inspect generated call sequences. Use compiler format attributes where available so the compiler can validate printf-like calls. Exercise wrappers under sanitizers on host builds, while remembering that sanitizer success does not prove target ABI compatibility.
+
+Staff-level questions:
+- Are variadic APIs necessary at this boundary?
+- What are the promoted types?
+- How are register and stack argument areas represented on the target ABI?
+- Is the API safe in ISR/fault contexts?
+- Can a typed event structure replace runtime type conventions?
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+Variadic calls combine a **language-level promotion rule** with an **ABI-level argument transport mechanism**. Keep the interface narrow, type expectations explicit, and `va_list` handling strictly conforming.
 
 ## Related
 [[00_Chapter_Index]]
