@@ -1,43 +1,50 @@
 # Constant-time bit operations
 
-> Canonical C topic note — chapter 43.
+> Canonical C topic note — Chapter 43. Constant-time bit manipulation aims to make execution behavior independent of secret-dependent values. C syntax alone cannot guarantee constant machine-level timing.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Constant-time bit operations**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+A constant-time algorithm avoids secret-dependent branches, memory accesses, and other operations whose timing can reveal information. This is a security property stronger than simply writing a loop with a fixed source-level iteration count.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+C specifies functional behavior, not instruction latency, caches, pipelines, branch prediction, interrupts, or compiler transformations. Therefore constant-time claims require an implementation and target model.
 
 ### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+- Are branches controlled by secret data?
+- Are table indices secret-dependent?
+- Can the compiler transform branchless code into branches?
+- Does the target have variable-latency arithmetic?
+- Can interrupts or caches dominate the timing signal?
+
+Bitwise select idioms can avoid obvious branches, but signed overflow, invalid shifts, and undefined behavior must still be eliminated because the compiler can exploit UB when optimizing.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+On MCUs without caches, timing analysis can be simpler, but interrupt latency, flash wait states, memory buses, and variable-latency instructions still matter. Cryptographic code often requires a defined threat model rather than a generic “constant-time” label.
 
 ### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+Prefer vetted cryptographic primitives and compiler/target combinations with established constant-time analysis. Inspect assembly for security-critical functions and test timing distributions, while recognizing that board-level noise does not prove absence of leakage.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
+- Secret-dependent table lookup leaks through memory timing.
+- A branchless source expression becomes conditional machine code.
+- Undefined behavior enables unexpected compiler transformations.
+- Data-dependent instruction latency is ignored.
+- A constant-time function is called through a path with secret-dependent control flow.
 
 ## Example pattern
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
+uint32_t select_mask(uint32_t condition)
 {
-    return x;
+    uint32_t mask = 0U - (condition != 0U);
+    return mask;
 }
 ```
+This illustrates a common mask construction; whether the surrounding algorithm is constant-time still requires target/compiler analysis.
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Inspect optimized assembly, use static constant-time analysis where available, test representative timing distributions, and review memory-access patterns. Keep compiler versions fixed for security-sensitive builds.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+Constant-time is a **whole toolchain and threat-model property**, not a visual property of C code. Eliminate UB, constrain compiler freedom appropriately, inspect generated code, and validate the complete execution path.
 
 ## Related
 [[00_Chapter_Index]]
