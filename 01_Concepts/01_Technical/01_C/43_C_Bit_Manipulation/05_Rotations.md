@@ -1,43 +1,50 @@
 # Rotations
 
-> Canonical C topic note — chapter 43.
+> Canonical C topic note — Chapter 43. A rotation moves bits out of one end of a fixed-width word back into the other end. Unlike a shift, no information is discarded when the width and count are valid.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Rotations**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+For an unsigned `W`-bit word, rotate-left by `n` can be expressed as `(x << n) | (x >> (W - n))`, with `n` normalized into `[0, W-1]`. A zero count must be handled specially because shifting by the word width is invalid.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+C has no universally available pre-C23 rotate operator. Implementations may recognize canonical idioms or provide builtins. Use unsigned fixed-width types and validate/normalize the count.
 
 ### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+- What is the exact word width?
+- Can `n == 0` occur?
+- Is `n >= W` possible?
+- Are operands promoted unexpectedly?
+- Does the target have a native rotate instruction?
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+Rotations appear in hash functions, checksums, cryptographic primitives, PRNGs, bit scramblers, and protocol algorithms. A compiler may map a safe rotate idiom to one instruction, while a poorly written expression can generate extra shifts and branches.
 
 ### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+For cryptographic or constant-time code, inspect generated assembly rather than assuming the C idiom has constant latency. Use compiler builtins only behind a portability wrapper when the implementation set is controlled.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
+- Shifting by `W` is undefined.
+- Signed operands introduce unnecessary complexity.
+- Assuming `uint32_t` exists without checking the implementation profile.
+- Using an expression that evaluates a volatile/MMIO operand more than once.
 
 ## Example pattern
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
+static uint32_t rotl32(uint32_t x, unsigned n)
 {
-    return x;
+    n &= 31U;
+    if (n == 0U) {
+        return x;
+    }
+    return (x << n) | (x >> (32U - n));
 }
 ```
+The explicit zero case prevents a 32-bit shift.
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Test counts 0, 1, 31, 32, 33 and random values. Compare against a reference implementation and inspect compiler output at the production optimization level.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+A rotate is a **fixed-width operation with a dangerous boundary at zero/full width**. Normalize counts, use unsigned operands, and verify the generated code when performance or constant-time behavior matters.
 
 ## Related
 [[00_Chapter_Index]]
