@@ -3,41 +3,87 @@
 > Canonical C topic note — chapter 34.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **ISR vs signal distinctions**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+An **ISR (interrupt service routine)** is a processor/interrupt-controller entry path used by embedded hardware. A **C signal handler** is a hosted-runtime mechanism defined by `<signal.h>`. Both are asynchronous relative to ordinary application code, but they have fundamentally different contracts.
+
+Understanding this distinction prevents one of the most common embedded-C mistakes: importing assumptions about POSIX/ISO signals into hardware interrupt code.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+An ISR is normally entered through hardware exception/interrupt machinery. The CPU saves architecture-specific state, selects a vector, changes execution mode as required, and runs an interrupt entry routine. The compiler's C function is only one layer of that mechanism.
+
+A signal handler is entered by the C runtime/operating system according to the implementation's signal model. It has no ISO C guarantee that it corresponds to a hardware interrupt, executes at a particular priority, or runs on a special stack.
 
 ### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+| Property | C signal handler | Hardware ISR |
+|---|---|---|
+| Defined by | C/OS runtime | CPU + interrupt controller + firmware |
+| Entry | runtime-managed | hardware exception path |
+| Priority | implementation/OS | hardware/RTOS |
+| Stack | runtime-dependent | architecture/RTOS-dependent |
+| MMIO | not inherently implied | central use case |
+| Masking | signal semantics | interrupt masking/priority |
+| Safe API set | signal-specific | ISR/RTOS-specific |
+| Portability | hosted implementations | MCU/architecture-specific |
+
+Neither context should call arbitrary application code merely because the C syntax looks like a normal function.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+For embedded firmware, define explicit execution-context contracts such as:
+
+```text
+THREAD_SAFE      callable from normal task context
+ISR_SAFE         bounded and legal from interrupt context
+FAULT_SAFE       usable after severe CPU/system fault
+BOOT_SAFE        usable before full runtime initialization
+```
+
+An ISR often must acknowledge hardware quickly, capture data, and defer work to a task. The same high-level architecture as signal handling applies, but the implementation mechanisms differ.
 
 ### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+For every ISR review:
+- identify interrupt source and priority;
+- determine which registers/flags must be acknowledged;
+- calculate worst-case latency;
+- identify shared state and required synchronization;
+- verify nesting and preemption behavior;
+- determine whether RTOS APIs are legal in ISR context;
+- account for cache, DMA, memory barriers, and peripheral ordering.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
+Do not assume:
+- `volatile` makes ISR communication safe;
+- every ISR may block;
+- an ISR can call a mutex API;
+- a signal handler and ISR can share the same implementation wrapper;
+- signal masking is equivalent to disabling CPU interrupts;
+- a compiler attribute such as `interrupt` is portable ISO C.
 
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
+A classic bug is using a driver routine that is task-safe but not ISR-safe. The routine may acquire a lock or wait for hardware, producing deadlock or excessive interrupt latency.
 
 ## Example pattern
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
+/* Pseudocode illustrating the architecture, not an ISO C ISR declaration. */
+volatile unsigned event_pending;
+
+void peripheral_isr(void)
 {
-    return x;
+    /* 1. Read/acknowledge hardware. */
+    /* 2. Capture minimal state. */
+    event_pending = 1;
+    /* 3. Defer processing to a task/main loop. */
 }
 ```
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Measure ISR entry latency, execution time, nesting depth, and maximum stack use on hardware. Use GPIO timestamping, cycle counters, trace units, or RTOS instrumentation where available.
+
+Staff-level questions:
+- Which guarantees come from C and which come from the MCU/RTOS?
+- Is the handler bounded under worst-case interrupt load?
+- Can it interrupt a critical section that owns resources it touches?
+- What is the deferred-work mechanism?
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+Signals and ISRs share the **asynchronous execution problem**, not the same specification. Treat ISR design as a hardware/ABI/RTOS contract layered underneath C, and never infer ISR behavior from ISO signal semantics.
 
 ## Related
 [[00_Chapter_Index]]
