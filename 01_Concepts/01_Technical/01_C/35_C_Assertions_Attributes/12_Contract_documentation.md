@@ -3,41 +3,59 @@
 > Canonical C topic note — chapter 35.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Contract documentation**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+A contract documents what a C function, module, type, or subsystem requires, guarantees, modifies, owns, and does not support. Good contracts turn implicit assumptions into reviewable interfaces. They may be expressed through types, `_Static_assert`, attributes, comments, naming, tests, and runtime checks.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+For every public API, document at least:
+- preconditions: valid pointers, ranges, state, alignment, initialization;
+- postconditions: outputs, state changes, ownership transfer;
+- failure behavior: return codes, side effects, recovery;
+- concurrency context: thread safety, ISR safety, locking;
+- timing/resource limits: blocking, allocation, stack, latency;
+- lifetime: who owns and how long referenced objects remain valid.
+
+Example:
+```c
+/* Requires: dst points to >= len writable bytes; src is valid for len bytes.
+ * Does not allocate or block. Safe from task context only. */
+int packet_copy(uint8_t *dst, const uint8_t *src, size_t len);
+```
+The C type system cannot express all of these properties, so documentation and verification complement language-level constraints.
 
 ### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+- Distinguish caller obligations from callee guarantees.
+- State ownership and lifetime explicitly.
+- Avoid documenting behavior the implementation does not actually guarantee.
+- Keep contracts synchronized with tests and static analysis.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+Contracts are especially important at hardware boundaries. A driver API may require clocks enabled, a peripheral initialized, a buffer aligned to a cache line, or calls restricted to task context. An undocumented assumption becomes an integration defect when another subsystem reuses the API.
 
 ### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+Review APIs for determinism, reentrancy, interrupt safety, memory ownership, error propagation, and reset behavior. Prefer contracts that can be mechanically checked with types, assertions, static analysis, or tests rather than prose alone.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
+A frequent defect is documenting `NULL` as accepted while dereferencing it, or saying an API is nonblocking while it takes a mutex. Another is documenting a buffer as “aligned” without specifying the required alignment.
 
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
+Do not promise exact timing without measurement and a defined execution environment. Do not hide safety-critical restrictions in comments that are not visible at call sites.
 
 ## Example pattern
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
+/* Contract:
+ * - buf: non-NULL, 4-byte aligned, writable for len bytes
+ * - len: <= DEVICE_FIFO_MAX
+ * - context: task context; may block
+ * - ownership: caller retains buf ownership
+ * - return: 0 on success, negative error code otherwise
+ */
+int device_write(const void *buf, size_t len);
 ```
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Turn important contract clauses into tests: invalid ranges, boundary sizes, concurrent calls, wrong context, alignment violations, and fault injection. Use static analysis and assertions for mechanically checkable properties. During debugging, compare observed behavior against the written contract rather than merely against current implementation behavior.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+A contract is the boundary between implementation freedom and caller responsibility. Staff engineers make important contracts explicit, minimize unverifiable promises, and design interfaces so the most important assumptions are difficult to violate.
 
 ## Related
 [[00_Chapter_Index]]
