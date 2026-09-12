@@ -1,53 +1,50 @@
 # Minimal ISR work
 
-> Canonical C topic note — Chapter 44. ISR work should be minimized to preserve interrupt latency, stack capacity, scheduler responsiveness, and system determinism.
+> Canonical C topic note — Chapter 44. An ISR should perform the minimum work required to capture/acknowledge the event and hand it to a context designed for longer processing.
 
 ## Definition
-A minimal ISR acknowledges the interrupt, captures the smallest necessary state, and signals deferred processing. The exact acceptable work depends on latency and safety requirements, but unbounded processing is generally inappropriate.
+Minimal ISR work usually includes reading the required hardware state, clearing/acknowledging the source, recording bounded data, and signaling deferred processing. Parsing, allocation, complex logging, and lengthy computation normally belong outside the interrupt context.
 
 ## Mechanism and language rules
-An ISR interrupts ordinary execution and may execute between any two points permitted by the hardware. Therefore it should avoid assumptions about what shared state is temporarily consistent unless the protocol guarantees them.
+The C language does not impose an ISR execution limit, but target interrupt latency does. Every function called by an ISR contributes to its worst-case execution time, stack usage, and reentrancy requirements.
 
 ### What to reason about
-- Interrupt entry/exit overhead.
-- Worst-case handler execution time.
-- Nesting and priority effects.
-- Shared-state atomicity and ordering.
-- Peripheral acknowledgement timing.
-- Whether a called API is ISR-safe.
+- What must happen before the interrupt source can be safely acknowledged?
+- How much data must be captured before hardware overwrites it?
+- Is the work bounded for every input?
+- Are all callees nonblocking and ISR-safe?
+- Can events arrive faster than deferred processing consumes them?
 
 ## Embedded implications
-Long ISRs increase worst-case latency for other interrupts and can cause FIFO overflow, missed sampling deadlines, motor-control jitter, or watchdog problems. Stack usage must include ISR nesting on top of task stack use where applicable.
+A short ISR reduces interrupt latency and nesting pressure. It can copy a timestamp/sample, acknowledge a peripheral, and push a small record into a ring buffer. The deferred worker can perform protocol parsing or expensive computation.
 
 ### Firmware review angle
-Use the ISR for capture and acknowledgement; move parsing, logging, protocol handling, and heavy computation to deferred context. Measure worst-case execution rather than relying on average timing.
+Set an explicit ISR cycle and stack budget. Review the transitive call graph and queue-overflow policy. Avoid `printf`, dynamic allocation, and unbounded loops unless the platform explicitly proves them safe.
 
 ## Edge cases and failure modes
-- Clearing an interrupt too late causes repeated entry.
-- Clearing it too early loses an event.
-- Doing formatted logging from the ISR blocks or consumes excessive stack.
-- Calling a mutex/blocking API deadlocks or corrupts scheduler state.
-- Assuming one interrupt corresponds to one event when hardware coalesces events.
+- Clearing the source before capturing required data loses information.
+- ISR performs too much work and causes lower-priority starvation.
+- Queue fills and the ISR silently drops critical events.
+- A called function takes a lock held by the interrupted context.
 
 ## Example pattern
 ```c
-static volatile uint32_t rx_snapshot;
-static volatile bool rx_pending;
-
-void RX_IRQHandler(void)
+void ADC_IRQHandler(void)
 {
-    rx_snapshot = UART_RX_REG;
-    clear_rx_irq();
-    rx_pending = true;
+    uint16_t sample = ADC_DATA;
+    ADC_CLEAR = ADC_IRQ_FLAG;
+    adc_push_from_isr(sample);
 }
 ```
-The deferred context should process the snapshot under an appropriate synchronization protocol.
+The queue primitive and register semantics are target-specific; the example illustrates the short-capture/handoff pattern.
 
 ## Verification / debugging
-Measure minimum/maximum/percentile ISR duration, interrupt-to-service latency, and nesting depth. Stress with maximum event rates and simultaneous higher-priority interrupts.
+Measure worst-case cycles, not average time. Stress maximum interrupt rates and queue saturation. Use static call-graph analysis and stack measurement. Verify event loss behavior explicitly.
+
+Staff-level questions: What work is truly time-critical? What is the minimum capture state? What happens when producer rate exceeds consumer rate?
 
 ## Staff-level takeaway
-“Minimal” means **bounded and sufficient**, not merely short in source lines. Design the ISR/deferred boundary around measurable latency, event-loss behavior, ownership, and stack constraints.
+A good ISR is a **fast boundary between hardware urgency and software processing**. Capture only what must not be lost, acknowledge correctly, and defer everything else under an explicit overflow and latency contract.
 
 ## Related
 [[00_Chapter_Index]]
