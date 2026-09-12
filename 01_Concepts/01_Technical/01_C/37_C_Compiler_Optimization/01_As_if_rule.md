@@ -1,56 +1,49 @@
 # As-if rule
 
-> Canonical C topic note — chapter 37.
-
 ## Definition
-The C implementation may transform a program in any way as long as every **observable behavior required by the language** is preserved. This is commonly called the *as-if rule*. It is not permission to change defined behavior arbitrarily; it is the foundation on which optimization is built.
+The **as-if rule** is the central permission that allows a conforming C implementation to transform a program aggressively: the implementation may perform any optimization as long as the observable behavior required by the C abstract machine is preserved. C does not require the generated instructions to resemble the source. It requires the externally observable result to satisfy the language rules.
 
-ISO C does not prescribe a particular instruction sequence, register allocation, stack frame, or execution time for ordinary hosted code. It does constrain what a conforming implementation must make observable. The exact boundary also depends on the C standard version, implementation extensions, volatile semantics, library behavior, I/O, atomics, and the target ABI.
+## Scope and boundaries
+The rule governs transformations, not permission to violate the C abstract machine. Undefined behavior, unspecified choices, implementation-defined behavior, volatile accesses, I/O, and synchronization affect what the compiler must preserve. The as-if rule does not make a data race valid, make an invalid pointer usable, or turn `volatile` into a general-purpose synchronization primitive.
 
 ## Mechanism and language rules
-A compiler reasons from the C abstract machine. If two executions are indistinguishable with respect to required observable behavior, the implementation may choose the cheaper representation.
-
-Important observables include accesses to `volatile` objects, externally visible I/O and library effects, termination behavior, and the sequencing requirements imposed by the language. Ordinary non-volatile memory that is never externally observed can often be eliminated, reordered, folded, or kept entirely in registers.
+A compiler builds an internal model of values, control flow, memory, calls, and side effects. It can fold constants, eliminate unreachable work, reorder independent operations, inline functions, vectorize loops, or replace a sequence with an equivalent instruction sequence. The key question is whether a permitted observer could distinguish the transformation.
 
 ```c
-int square_plus_one(int x)
+int square(int x)
 {
-    return x * x + 1;
+    return x * x;
 }
 ```
 
-The compiler can replace arithmetic with equivalent instructions, inline the function, specialize constant arguments, or remove the function entirely if no observable distinction remains.
+The compiler may emit a multiply, inline the operation, or use another equivalent sequence. Source-level execution order is not itself an observable requirement.
+
+### Observable behavior
+Typical observable effects include accesses to volatile objects, interactions with files and terminal I/O in hosted implementations, and program termination behavior. The exact set is defined by ISO C and the implementation environment. Ordinary non-volatile memory accesses that have no externally visible consequence may be cached, reordered, combined, or removed.
 
 ### Undefined behavior changes the optimization boundary
-If a program executes undefined behavior, the implementation has no requirement to preserve the programmer's intended result. Optimizers may use assumptions such as “this signed addition cannot overflow” or “this pointer is valid” when proving transformations. A release-only failure is often evidence of a violated language contract, not an optimizer bug.
-
-### `volatile` is not a universal optimization barrier
-A volatile access is observable and must be performed according to the rules for volatile accesses, but `volatile` does not automatically make surrounding non-volatile operations atomic, ordered with other threads, or synchronized with hardware. Hardware memory barriers and C atomics solve different problems.
+If code executes undefined behavior, the implementation is no longer required to preserve the intuitive behavior surrounding that operation. For example, an out-of-bounds access can allow assumptions that make apparently unrelated code disappear. This is why “it worked at `-O0`” is not evidence of correctness.
 
 ## Embedded implications
-For firmware, the as-if rule explains why source-level intuition is unreliable for timing and register state. A loop can disappear, a helper can become zero instructions, and a memory access can move into a different generated sequence while preserving the C-defined result.
+The as-if rule is fundamental to firmware optimization. A compiler may remove a polling loop if the object is not volatile and there is no valid C-visible reason for it to change. It may fold register calculations, eliminate unused peripheral configuration, or reorder ordinary memory operations. Hardware-visible accesses therefore need the correct language and architecture contracts: `volatile` for required volatile accesses, atomics for C-level inter-thread synchronization, and target-specific barriers where hardware ordering requires them.
 
-MMIO should normally be represented through appropriately qualified volatile objects or vendor abstractions. Shared data between execution contexts needs an actual concurrency contract; volatile alone does not establish inter-thread happens-before relationships.
-
-Optimization can also alter interrupt latency, stack depth, flash footprint, power consumption, and worst-case execution time. Therefore “same C behavior” does not mean “same real-time behavior.”
+Optimization can change timing, stack usage, instruction alignment, interrupt latency, and power consumption while remaining fully conforming. Real-time requirements therefore need explicit measurement; source-code appearance is not a timing specification.
 
 ## Edge cases and failure modes
-- Assuming every source statement executes exactly once.
-- Using a non-volatile variable as a hardware register.
-- Depending on the number of loop iterations for delay without a timing contract.
-- Expecting an unused write to remain in the binary.
-- Treating undefined behavior as a valid optimization constraint.
-- Assuming `volatile` prevents compiler reordering of all surrounding operations.
-- Measuring debug builds and assuming the measurements represent production firmware.
+- Treating `volatile` as a complete memory barrier.
+- Assuming a local variable is stored in RAM because the debugger shows it at `-O0`.
+- Using undefined behavior as an accidental hardware primitive.
+- Assuming function calls always prevent all reordering; interprocedural optimization can understand more than expected.
+- Assuming a compiler must preserve instruction count or source statement order.
+- Forgetting that observable behavior is different from “whatever a debugger can currently see.”
 
 ## Verification / debugging
-Compare `-O0`, `-O2`/`-O3`, and the production configuration. Inspect disassembly and map files rather than source alone. If behavior changes with optimization, first run undefined-behavior sanitizers on a host build and enable aggressive warnings. For firmware, inspect MMIO accesses, interrupt entry/exit timing, and generated barriers.
+Compare `-O0`, `-O2`/`-O3`, and production flags. Inspect assembly, linker maps, and generated DWARF. Use warnings, sanitizers, static analysis, and hardware tracing where appropriate. For hardware accesses, verify that the source uses the correct volatile-qualified declarations and architecture synchronization primitives.
 
-A useful review question is: **Which C-level observable behavior requires this generated instruction to exist?** If there is no valid answer, the compiler may legally remove or transform it.
+A useful review question is: **what exact C or hardware rule makes this side effect observable or ordered?** If the answer is only “the compiler usually does it,” the design is not robust.
+
+## Performance, timing, memory and power
+The as-if rule permits large gains in code size, execution time, register allocation, cache behavior, and energy consumption. Those gains can also expose latent timing assumptions. Measure worst-case execution time and interrupt latency on the actual target rather than inferring them from source complexity.
 
 ## Staff-level takeaway
-Optimization is not a separate semantic universe. The compiler is exploiting the C contract you wrote. Staff-level engineers should make invariants explicit, eliminate undefined behavior, identify true observables, and verify timing or hardware requirements at the binary boundary instead of relying on source-code appearance.
-
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+Treat optimization as a consequence of a correct semantic contract, not something that must be disabled to make firmware work. First make the program well-defined and correctly synchronized; then let the compiler optimize it. When behavior must remain visible to hardware or another execution agent, express that requirement with the appropriate C, ABI, and hardware mechanism.
