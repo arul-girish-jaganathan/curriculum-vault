@@ -3,41 +3,25 @@
 > Canonical C topic note — chapter 39.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Dataflow analysis**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+Dataflow analysis computes facts about values and program states as control flows through a program. It underpins many compiler warnings and static-analysis checks.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
-
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+Typical analyses include reaching definitions, live variables, constant propagation, nullability, range analysis, taint flow, and use-before-initialization. Path-sensitive tools maintain different facts for different branches and may merge them conservatively at joins.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
-
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+Dataflow analysis can expose error paths, unchecked lengths, stale state, missing initialization, and resource leaks in complex firmware. It is particularly useful where hardware-driven control flow creates many states.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
-```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
-```
+- Analysis imprecision at aliasing or function-pointer boundaries.
+- Assuming a warning proves an actual runtime failure.
+- Missing configuration macros causing false paths.
+- Ignoring interprocedural effects.
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Reduce critical findings to small reproductions and inspect the paths reported by the tool. Compare analyzer assumptions with the actual API contracts and hardware model.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+Learn to read the *proof path* behind a finding: which assumptions, definitions, branches, and aliases caused the analyzer to reach its conclusion. That makes triage faster and suppressions safer.
 
 ## Related
 [[00_Chapter_Index]]
