@@ -3,41 +3,25 @@
 > Canonical C topic note — chapter 39.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Baseline management**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+A static-analysis baseline records known existing findings so CI can enforce that new defects do not increase the accepted debt. It is a migration mechanism, not a permanent safety exemption.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
-
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+Baselines should identify stable finding fingerprints, locations, rule IDs, and tool versions. Prefer tracking defects and deviations explicitly when practical because line-based fingerprints can become stale after refactoring.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
-
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+Baselines allow legacy firmware to adopt stronger analysis without blocking all development. New and modified code can be held to a stricter gate while historical findings are retired progressively.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
-```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
-```
+- Baseline silently accepting a newly introduced defect with a matching fingerprint.
+- Never reducing baseline size.
+- Updating tool versions without reviewing changed findings.
+- Storing baselines outside source control.
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Track baseline count and age. Require review for additions. Periodically rebuild from a clean analysis and retire resolved findings. Pin analyzer versions or explicitly review version changes.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+A baseline should trend toward zero or a controlled, justified residual—not become a second database of ignored defects.
 
 ## Related
 [[00_Chapter_Index]]
