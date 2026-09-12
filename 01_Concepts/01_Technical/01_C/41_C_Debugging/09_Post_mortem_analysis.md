@@ -1,68 +1,61 @@
 # Post-mortem analysis
 
-> Canonical C topic note — Chapter 41. Post-mortem analysis reconstructs failure without relying on the live failing process. It combines machine state, symbols, logs, memory artifacts, build metadata, and system history.
+> Canonical C topic note — Chapter 41. Post-mortem analysis reconstructs a failure after execution has stopped or the system has rebooted. It combines raw evidence with C semantics, generated code, ABI knowledge, and system history.
 
 ## Definition
-Post-mortem debugging analyzes a captured failure after execution has stopped or the device has rebooted. It is particularly valuable when reproducing the defect interactively is difficult or impossible. ISO C does not define post-mortem facilities; the evidence format is an engineering and platform contract.
+Post-mortem analysis examines crash records, core dumps, logs, trace, memory snapshots, registers, firmware metadata, and environmental information without requiring the original process to remain live. The objective is to reconstruct the sequence and identify the earliest defensible causal mechanism.
 
 ## Mechanism and language rules
-A useful workflow separates facts from hypotheses:
-
-1. Validate the artifact and build identity.
-2. Validate dump integrity.
-3. Decode the machine context.
-4. Map addresses to the exact executable.
-5. Reconstruct the stack and active execution context.
-6. Inspect relevant memory and ownership state.
-7. Correlate with event history and reset reason.
-8. Form and test causal hypotheses.
+Evidence has different confidence levels. A raw PC or captured register is direct evidence; a symbolic function name is a derived interpretation; a proposed root cause is a hypothesis. C undefined behavior, data races, lifetime violations, and corrupted memory can make later observations unreliable.
 
 ### What to reason about
-- Which values are direct observations versus debugger-derived interpretations?
-- Which memory could already be corrupted?
-- Is the PC a valid code address?
-- Is the stack within an expected region?
-- Could an interrupt or DMA operation explain the state?
-- Does the timeline distinguish trigger from consequence?
+- What was captured directly versus inferred?
+- Is the image/symbol set exact?
+- Does the stack unwind consistently with the ABI?
+- Which memory regions could have been corrupted earlier?
+- What concurrent agents could have modified state?
+- Are timestamps from comparable clocks and do they wrap?
 
-Never infer causality solely from “the last line shown.” The faulting instruction may be where corruption becomes visible rather than where it originated.
+Use a timeline: last-known-good state -> invariant violation -> suspected corruption -> faulting instruction -> reset/recovery.
 
 ## Embedded implications
-Embedded post-mortem systems should preserve reset cause, firmware identity, fault registers, exception context, stack samples, task/ISR identity, and a bounded event history. Ring-buffered event records are often more useful than verbose logs because they preserve the final seconds before failure with predictable storage.
+Embedded post-mortem data may be tiny. Event IDs, monotonic counters, reset reasons, watchdog breadcrumbs, and selected memory windows can be more useful than verbose logs. Fault records must survive the intended reset path and be distinguishable from stale records.
 
 ### Firmware review angle
-Build decoding tools into CI and test them against synthetic crash records. A diagnostic format that only one engineer can decode is an operational risk. Keep host-side tooling versioned alongside the firmware record definition.
+Create a documented decoder that accepts firmware build ID, architecture, record version, and raw bytes. Keep production artifacts long enough to analyze field failures after software has moved on.
 
 ## Edge cases and failure modes
-- **Wrong binary:** address-to-source mapping becomes false.
-- **Corrupted stack:** unwinding invents plausible but incorrect frames.
-- **Secondary failure:** watchdog reset or brownout occurs after the original fault.
-- **Timestamp ambiguity:** events from different clocks cannot be naively ordered.
-- **Evidence overwrite:** reboot/startup code clears retained RAM before extraction.
+- **Secondary fault:** the crash handler itself faults and obscures the original state.
+- **Stale record:** normal boot reuses old crash data as if it were new.
+- **Clock mismatch:** events appear out of order.
+- **Symbol mismatch:** a correct PC is mapped to the wrong source.
+- **Overinterpretation:** a plausible story is mistaken for proven causality.
 
 ## Example pattern
-```c
-struct breadcrumb {
-    uint32_t sequence;
-    uint16_t event_id;
-    uint16_t data;
-};
+```text
+Evidence:
+  PC = 0x08012344
+  SP = 0x20007F10
+  reset_reason = WATCHDOG
+  last_event = RX_COPY_BEGIN
 
-static struct breadcrumb history[32];
+Hypothesis:
+  RX buffer corruption caused a later invalid pointer.
+
+Required proof:
+  instruction disassembly + stack validation + buffer ownership history.
 ```
-A fixed-size ring avoids dynamic allocation and provides deterministic storage. The sequence number lets the host reconstruct wraparound order.
+The hypothesis is deliberately separate from the evidence.
 
 ## Verification / debugging
-Use synthetic faults to validate the complete chain: capture, reboot, extraction, symbolization, decoding, and report generation. Test corrupted records and mismatched firmware versions. Compare several independent evidence sources before declaring root cause.
+Start with integrity and identity checks. Symbolize the PC against the exact ELF. Inspect the faulting instruction and its operands, validate stack plausibility, then correlate with event history and memory ownership.
 
-Staff-level questions:
-- What facts are independently verified?
-- What evidence distinguishes root cause from crash symptom?
-- Is the artifact reproducible and decodable by another engineer?
-- Which additional instrumentation would make the next incident conclusive?
+Attempt reproduction only after forming a falsifiable hypothesis. Convert a confirmed mechanism into a regression test, invariant, static-analysis rule, or permanent diagnostic.
+
+Staff-level questions: Which conclusion is directly proven? What evidence is missing? Could a different fault produce the same observed record? How can uncertainty be reduced without disturbing the production system?
 
 ## Staff-level takeaway
-Post-mortem debugging is an **evidence reconstruction discipline**. Preserve enough state and history to make failures actionable, but keep capture bounded, versioned, secure, and independent of fragile runtime services.
+Excellent post-mortem analysis is **forensic engineering**: preserve raw evidence, separate facts from hypotheses, validate binary identity, reconstruct execution from the ABI upward, and explicitly track uncertainty until the root cause is demonstrated.
 
 ## Related
 [[00_Chapter_Index]]
