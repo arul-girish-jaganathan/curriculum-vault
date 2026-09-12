@@ -1,43 +1,50 @@
 # Volatile MMIO
 
-> Canonical C topic note — chapter 44.
+> Canonical C topic note — Chapter 44. Memory-mapped I/O exposes hardware registers through addresses interpreted by implementation-specific mechanisms. `volatile` prevents the compiler from treating accesses as ordinary removable/mergeable memory operations, but it does not guarantee atomicity or inter-device ordering.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Volatile MMIO**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+A typical register is declared through a `volatile` qualified type so every required access remains an observable operation to the implementation. Exact address mapping, register width, access permissions, side effects, and barriers are target-specific.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+`volatile` is a C qualifier. It tells the implementation that accesses to the object are observable and must follow the volatile access requirements. It does not mean “hardware register,” “atomic,” “thread-safe,” or “memory barrier.”
 
 ### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+- Is the register read/write-only or read/write?
+- What access width does the hardware require?
+- Are reads destructive?
+- Are reserved bits required to be preserved or written as zero?
+- Is ordering relative to other devices required?
+- Is a compiler barrier or CPU/device memory barrier needed?
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+MMIO errors can cause lost interrupts, unintended commands, bus faults, or peripheral corruption. `reg |= mask` may perform a read-modify-write that is invalid for write-one-to-clear status registers.
 
 ### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+Keep register definitions centralized and use vendor-provided access abstractions when available. Separate compiler visibility (`volatile`) from CPU/bus ordering and synchronization requirements.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
+- Missing `volatile` allows required hardware observations to be optimized away.
+- Excessive `volatile` prevents useful optimization and can increase timing.
+- `volatile` does not make a multi-instruction register update atomic.
+- Reading status registers can clear events.
+- Wrong access width can trigger undefined hardware behavior even though the C expression is valid.
 
 ## Example pattern
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
+typedef struct {
+    volatile uint32_t STATUS;
+    volatile uint32_t CONTROL;
+} uart_regs_t;
+
+#define UART ((uart_regs_t *)0x40000000u)
 ```
+The address and layout are illustrative and must come from the target memory map.
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Compare source declarations with the reference manual and inspect generated load/store width. Test reset values, side effects, reserved bits, and interrupt races. Add architecture-specific barriers only where the hardware programming model requires them.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+`volatile` is a **compiler-observability contract**, not a universal hardware synchronization primitive. Correct MMIO requires combining C qualification with target access width, register semantics, concurrency, and memory-ordering rules.
 
 ## Related
 [[00_Chapter_Index]]
