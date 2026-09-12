@@ -1,43 +1,63 @@
 # Memory inspection
 
-> Canonical C topic note — chapter 41.
+> Canonical C topic note — Chapter 41. Memory inspection reads raw target bytes and interprets them using C object representation, ABI, linker layout, and target memory-map knowledge.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Memory inspection**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+Memory inspection is examination of target memory at an address, usually as bytes, words, or typed values. ISO C does not define debugger memory windows. It does define object representations and rules around accessing objects through appropriate lvalues and character types, but debugger reads occur outside the C abstract machine.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+A debugger can display the same bytes as hexadecimal, signed/unsigned integers, pointers, floating-point values, or structures. Interpretation is meaningful only when the type, alignment, endianness, ABI representation, and lifetime are known.
 
 ### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+- What object, if any, owns this address?
+- Is the object alive at the time being inspected?
+- What is its alignment and representation?
+- What is the target endianness?
+- Is the region RAM, flash, MMIO, retention RAM, or unmapped space?
+- Is another CPU, ISR, DMA engine, or peripheral modifying it?
+- Could a debugger read trigger a hardware side effect?
+
+Raw bytes can reveal stack corruption, buffer overruns, allocator metadata damage, stale DMA descriptors, and corrupted return addresses, but a byte pattern alone does not prove a particular C-level cause.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+MCUs often have sparse and aliased address maps. Invalid reads may generate bus faults. Memory windows over peripheral registers can clear flags or consume FIFO data. Some memories are inaccessible while clocks or power domains are disabled.
+
+Linker map files are essential for interpreting addresses: they connect symbols and sections to RAM/flash regions. Stack boundaries, heap boundaries, DMA pools, bootloader regions, and retained crash storage should be known before inspecting arbitrary addresses.
 
 ### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+For cache-enabled systems, distinguish CPU cache state from backing memory and DMA visibility. A debugger may observe memory that differs from what a CPU or peripheral currently sees. For multicore targets, establish which observer and memory domain is being examined.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
+- **Wrong type interpretation:** identical bytes can represent different values under different types.
+- **Endian confusion:** `0x12345678` has different byte order in memory depending on target endianness.
+- **Dead object:** memory may have been reused after lifetime ended.
+- **MMIO side effects:** reading a register is not equivalent to reading ordinary RAM.
+- **Stale cache:** displayed RAM may not reflect a device's view.
+- **Corrupt debugger context:** a halted CPU does not freeze every bus master.
 
 ## Example pattern
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
+struct packet {
+    uint16_t length;
+    uint8_t payload[8];
+};
+
+static struct packet p;
 ```
+To inspect `p`, first resolve its symbol address and size, then examine raw bytes, then interpret fields according to the ABI. Do not assume that a debugger's structure rendering is proof of the wire format.
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Start from a known symbol or linker address. Dump raw bytes, compare them with expected initialization, inspect adjacent guard regions, and correlate changes with code or DMA ownership. For corruption, take snapshots before and after the suspected operation and use watchpoints where hardware supports them.
+
+Staff-level questions:
+- What memory region is this address in?
+- Which agent owns it?
+- What representation should be expected?
+- Is cache/coherency involved?
+- Could inspection itself have side effects?
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+Memory inspection is most useful when **address -> region -> object -> owner -> representation -> timeline** is established. Hex dumps are evidence; interpretation requires C object rules plus the target's ABI and memory architecture.
 
 ## Related
 [[00_Chapter_Index]]
