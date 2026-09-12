@@ -1,49 +1,56 @@
 # Zero-copy buffers
 
-> Canonical C topic note — Chapter 45. Zero-copy designs avoid copying payload data between software buffers by transferring ownership or exposing the same storage across processing stages.
+> Canonical C topic note — Chapter 45. Zero-copy designs let data move between producer and consumer without unnecessary CPU copying, but they transfer complexity into ownership, lifetime, alignment, cache, and synchronization contracts.
 
 ## Definition
-A zero-copy path can reduce CPU cycles and memory bandwidth, but it requires stronger lifetime and ownership contracts. The fact that two pointers refer to the same storage does not establish who may modify it.
+A zero-copy path passes a buffer reference from one component or hardware agent to another. The producer must not modify or reuse the buffer until ownership is returned.
 
 ## Mechanism and language rules
-C pointers describe addresses into objects; they do not encode ownership or synchronization. A zero-copy API must document whether a buffer is borrowed, transferred, immutable, or retained asynchronously.
+A C pointer only identifies storage in the CPU's address space. For DMA, the device may require a mapped address and specific memory attributes. The object's lifetime must extend through every asynchronous user.
 
 ### What to reason about
-- Who owns the object?
-- How long is it valid?
-- Is it writable by both producer and consumer?
-- Is cache coherence maintained?
-- Can the producer reuse it before the consumer completes?
-- Does the ABI require alignment or address conversion?
+- Who owns the buffer now?
+- Can producer and consumer overlap access?
+- Is the buffer CPU- and device-visible?
+- Are alignment and cache constraints satisfied?
+- Does the consumer retain the pointer asynchronously?
+- What is the release event?
 
 ## Embedded implications
-Zero-copy can reduce RAM, CPU time, and power, especially for high-rate peripherals. It can also increase fragmentation of ownership logic and expose hardware constraints directly to higher layers.
+Zero-copy can reduce CPU cycles, RAM bandwidth, and latency, but may increase buffer-pool size and fragmentation pressure. Cache maintenance can erase some of the expected performance benefit.
 
 ### Firmware review angle
-Use explicit buffer states such as FREE, CPU_OWNED, DMA_OWNED, and COMPLETE. Do not pass stack storage to asynchronous zero-copy operations.
+Use explicit buffer states such as FREE, CPU, DMA, and CONSUMER. Keep ownership transitions observable in debug builds and define timeout/reset behavior for stuck owners.
 
 ## Edge cases and failure modes
-- Use-after-free/lifetime end while DMA still owns the buffer.
-- Producer modifies data after publishing it.
-- Consumer retains a buffer beyond its ownership interval.
-- Cache state is inconsistent.
-- Upper layers assume a mutable buffer is private when it is shared.
+- Buffer reused before DMA completion.
+- CPU writes while device reads.
+- Cache line sharing causes stale or lost data.
+- Device address mapping is invalid after reset.
+- Pool exhaustion creates hidden blocking.
 
 ## Example pattern
 ```c
-typedef struct {
-    uint8_t *data;
-    size_t len;
-    bool immutable;
-} buffer_view_t;
+typedef enum {
+    BUF_FREE,
+    BUF_DMA,
+    BUF_CPU
+} buf_state_t;
+
+struct buffer {
+    uint8_t data[1536];
+    buf_state_t state;
+};
 ```
-The structure expresses a view, not ownership; the surrounding API must define lifetime and transfer rules.
+The state machine is only a model; synchronization and hardware mapping remain platform-specific.
 
 ## Verification / debugging
-Track buffer IDs through every ownership transition. Stress concurrent reuse, early completion, errors, reset, and maximum throughput. Use sanitizers on host equivalents for lifetime bugs.
+Measure copy elimination against cache and synchronization costs. Stress buffer starvation, delayed completion, reset, and error paths. Add sequence IDs and ownership assertions.
+
+Staff-level questions: What cost was actually removed by zero-copy? What new lifetime and cache obligations were introduced? Is a bounded copy simpler and fast enough?
 
 ## Staff-level takeaway
-Zero-copy is an **ownership optimization**. It is worthwhile only when the saved copy cost exceeds the added complexity of lifetime, cache, synchronization, and API contracts.
+Zero-copy is a **complexity trade**, not a free optimization. Choose it when measured copy cost justifies the stronger ownership, cache, lifetime, and debugging contracts.
 
 ## Related
 [[00_Chapter_Index]]
