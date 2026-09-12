@@ -1,43 +1,49 @@
 # Volatile DMA status
 
-> Canonical C topic note — chapter 45.
+> Canonical C topic note — Chapter 45. DMA status fields that software observes through shared memory or MMIO require careful separation of compiler visibility, hardware ownership, and synchronization.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Volatile DMA status**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+`volatile` can be appropriate for memory that may change independently from ordinary program flow, but it does not make a DMA status protocol atomic, coherent, or ordered. A DMA completion indication must be interpreted according to the hardware contract.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+For MMIO status registers, `volatile` preserves required compiler-visible accesses. For DMA descriptors in RAM, whether a field needs `volatile` is a design-specific question; cache maintenance and synchronization often matter more. Marking an entire descriptor volatile can impose unnecessary compiler traffic without solving cache coherency.
 
 ### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+- Is the status in MMIO or RAM?
+- Who writes it?
+- Is the write atomic at the hardware access width?
+- When is it guaranteed visible to the CPU?
+- Does reading it acknowledge/clear hardware state?
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+A status bit can be set by DMA while the CPU cache still contains an old descriptor. Conversely, CPU reads may see stale payload unless invalidation occurs. Completion ordering must cover both descriptor/status and payload.
 
 ### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+Define a completion protocol: DMA writes payload, updates completion metadata, raises interrupt; CPU synchronizes visibility, validates completion, consumes payload, and returns ownership.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
+- `volatile` added but cache remains stale.
+- CPU observes completion before payload visibility.
+- Status read clears a hardware event unexpectedly.
+- Multiword status is read while hardware updates it.
 
 ## Example pattern
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
+struct dma_status {
+    uint32_t length;
+    uint32_t flags;
+};
+
+/* Visibility/ownership rules must be established around this object. */
+static struct dma_status status;
 ```
+Do not add `volatile` mechanically; derive qualifiers from the actual access model.
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Test cache-enabled operation, repeated completion, partial transfers, and error status. Inspect memory before/after cache maintenance and correlate hardware completion with CPU observations.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+For DMA status, ask **who writes, who observes, when visibility is guaranteed, and what reading means**. `volatile` answers only one part of that chain.
 
 ## Related
 [[00_Chapter_Index]]
