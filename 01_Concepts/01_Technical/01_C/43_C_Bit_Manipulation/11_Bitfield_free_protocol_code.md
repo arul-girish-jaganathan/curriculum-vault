@@ -1,41 +1,41 @@
 # Bitfield-free protocol code
 
-> Canonical C topic note — Chapter 43. Explicit byte and bit operations are often preferable to C bit-fields when a protocol representation must be stable across compilers, ABIs, architectures, and optimization levels.
+> Canonical C topic note — Chapter 43. Protocol representations should normally be encoded explicitly as bytes and masks rather than relying on implementation-dependent C bit-field layout.
 
 ## Definition
-C bit-field layout, allocation order, packing, and interactions with underlying integer types are implementation-defined or otherwise implementation-dependent. Protocol code should normally define the wire representation independently and encode/decode it explicitly.
+C bit-field allocation order, packing, alignment, and related layout properties are implementation-dependent. A wire protocol is an external representation contract, so its byte order and field positions should be explicit.
 
 ## Mechanism and language rules
-A protocol encoder should operate on `uint8_t` byte arrays or another explicitly specified representation. Multi-byte integers should be serialized with explicit shifts/masks or dedicated endian conversion routines. Do not cast a packet buffer to a struct and assume its layout equals the wire format.
+Use `uint8_t` arrays or another precisely specified representation. Extract and insert fields with shifts and masks, and serialize multi-byte integers with explicit endian rules. Do not cast an arbitrary packet buffer to a struct and assume that its in-memory layout equals the wire format.
 
 ### What to reason about
-- Byte order.
-- Bit numbering.
+- Byte order and bit numbering.
 - Field width and valid range.
-- Alignment requirements.
+- Alignment and object representation.
 - Padding and structure layout.
-- Signedness and integer promotion.
+- Integer promotions.
 - Bounds before every read/write.
+- Versioning and backward compatibility.
 
 ## Embedded implications
-Explicit serialization avoids unaligned accesses on architectures that prohibit them and avoids compiler padding surprises. It also makes protocol evolution and compatibility easier to review.
+Explicit parsing avoids unaligned accesses on strict architectures and makes protocol behavior independent of compiler packing rules. It also lets the parser reject malformed lengths before data reaches allocation, indexing, or hardware control paths.
 
 ### Firmware review angle
-Keep wire-format types separate from internal C structures. Validate lengths before parsing and reject impossible field combinations before using them for allocation, indexing, or hardware commands.
+Separate wire-format code from internal C structures. Centralize endian helpers and validate every field against protocol limits. Treat the wire format as an ABI that must remain stable across firmware releases.
 
 ## Edge cases and failure modes
 - Struct padding inserts unexpected bytes.
-- Bit-field allocation order differs across implementations.
-- Unaligned casts fault on some MCUs.
-- Endianness is assumed from host architecture.
-- Integer promotion changes an intermediate shift.
-- Malicious length fields cause out-of-bounds parsing.
+- Bit-field allocation order differs across targets.
+- Unaligned pointer casts fault.
+- Host endianness is assumed accidentally.
+- Integer promotions alter an intermediate shift.
+- Malicious length fields cause out-of-bounds access.
 
 ## Example pattern
 ```c
 static uint16_t get_be16(const uint8_t p[2])
 {
-    return ((uint16_t)p[0] << 8) | p[1];
+    return ((uint16_t)p[0] << 8) | (uint16_t)p[1];
 }
 
 static void put_be16(uint8_t p[2], uint16_t v)
@@ -44,13 +44,15 @@ static void put_be16(uint8_t p[2], uint16_t v)
     p[1] = (uint8_t)v;
 }
 ```
-The byte order is explicit and no structure packing assumption is involved.
+The wire representation is explicit and contains no packing assumption.
 
 ## Verification / debugging
-Use golden byte sequences, round-trip tests, boundary values, malformed lengths, and cross-compiler tests. Inspect generated code when parser performance is critical, but never trade away representation correctness for a guessed optimization.
+Use golden vectors, round-trip tests, boundary values, malformed lengths, cross-endian tests, and cross-compiler builds. Fuzz parsers with invalid field combinations and truncated packets.
+
+Staff-level questions: What is the external ABI? Can a new compiler or MCU decode old packets? Are every field width and endian rule explicit? Does the parser validate before using untrusted data?
 
 ## Staff-level takeaway
-Treat the wire format as an **external ABI**. Explicit serialization makes byte order, field boundaries, alignment, and validation visible and portable, whereas packed C bit-fields are usually a poor substitute for a protocol specification.
+Treat protocol data as an **external ABI**. Explicit byte-level serialization makes representation, validation, portability, and evolution visible and testable.
 
 ## Related
 [[00_Chapter_Index]]
