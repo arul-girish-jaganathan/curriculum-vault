@@ -1,25 +1,37 @@
 # AddressSanitizer
 
-> Canonical C topic note — chapter 40.
-
 ## Definition
-AddressSanitizer (ASan) is a compiler/runtime instrumentation technique for detecting many memory-safety errors, including out-of-bounds accesses and use-after-free. It is primarily a development/test tool, not a replacement for a production memory-safety strategy.
+**AddressSanitizer (ASan)** is a compiler/runtime instrumentation technology for detecting many memory-safety errors, including heap and stack buffer overflows, use-after-free, use-after-scope in supported configurations, and related invalid accesses. It is primarily a testing tool rather than a production-memory-safety mechanism.
+
+## Scope and boundaries
+ASan availability and exact options depend on compiler, target, operating system, and runtime. It can miss defects it cannot instrument or model, and its memory/time overhead makes it unsuitable for many constrained MCUs. A clean ASan run is evidence, not proof of memory safety.
 
 ## Mechanism and language rules
-Instrumentation surrounds memory accesses and uses shadow metadata to identify poisoned red zones and invalid regions. Reports typically identify the access, stack trace, allocation/free history, and memory region.
+The compiler instruments memory accesses and allocation/deallocation paths. A shadow-memory model tracks whether application memory is addressable. When an instrumented access reaches poisoned/red-zone memory, the runtime reports the location and stack traces.
+
+Conceptually:
+
+```text
+program -> compiler instrumentation -> ASan runtime -> shadow memory
+```
 
 ## Embedded implications
-ASan is often easiest on a host build because embedded targets may lack RAM, address-space, runtime, or debugger support. Host testing can still exercise protocol parsing, state machines, serializers, allocators, and other target-independent logic.
+The strongest workflow is often host-side testing of portable parsing, buffers, allocators, protocol logic, and drivers with hardware dependencies abstracted. The same C module can then be built for the MCU without ASan. This finds a large class of defects before target testing.
+
+For target systems that support a sanitizer runtime, evaluate memory overhead, reserved address space, interrupt behavior, and real-time distortion before use.
 
 ## Edge cases and failure modes
-ASan does not prove absence of all UB, does not model every hardware register, and may not catch bugs outside its instrumentation coverage. Instrumentation changes memory layout and timing, so an ASan firmware image is not timing-equivalent to production.
+- ASan changes memory layout and timing.
+- Custom allocators are not modeled correctly unless integrated.
+- DMA or hardware writes can bypass compiler instrumentation.
+- Inline assembly can access memory outside the sanitizer model.
+- Stack/heap overflows that do not hit instrumented red zones may evade detection.
 
 ## Verification / debugging
-Run deterministic reproductions under ASan, preserve the first useful stack trace, and reduce the input. Combine with UBSan, static analysis, fuzzing, and targeted hardware tests. Never “fix” a report by suppressing it before understanding the lifetime/bounds contract.
+Build sanitizer-enabled tests with debug symbols and high-quality stack traces. Reproduce failures with the smallest input. Run unit, integration, and fuzz tests under ASan. Fix the first reported memory error because later failures may be cascading consequences.
+
+## Performance, memory, timing and power
+ASan commonly increases memory consumption substantially and adds runtime overhead. It is therefore excellent for host CI and fuzzing but usually inappropriate for a production MCU image. The overhead is a feature during testing because it makes hidden memory errors observable.
 
 ## Staff-level takeaway
-Use ASan as a high-sensitivity memory bug detector in a layered verification strategy, with host/target boundaries explicitly documented.
-
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+Use ASan as a **high-signal dynamic memory-safety net**. Apply it to the largest practical portion of the codebase, especially parser and buffer logic, while explicitly testing the hardware-specific boundaries it cannot observe.
