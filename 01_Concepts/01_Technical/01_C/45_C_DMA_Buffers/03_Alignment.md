@@ -1,49 +1,53 @@
 # Alignment
 
-> Canonical C topic note — Chapter 45. DMA buffers and descriptors often require stronger alignment than ordinary C objects because hardware accesses memory in fixed-width or cache-line-sized transactions.
+> Canonical C topic note — Chapter 45. DMA alignment must satisfy both the C object's alignment requirements and the hardware's address, descriptor, and cache-line requirements.
 
 ## Definition
-C requires objects to meet their type's alignment requirements. DMA hardware can impose additional constraints: descriptor alignment, buffer alignment, address boundaries, burst boundaries, or cache-line alignment. These hardware requirements are outside ISO C.
+C alignment determines which addresses are valid for objects of a given type. DMA hardware can impose additional constraints such as descriptor alignment, buffer alignment, burst boundaries, or cache-line requirements.
 
 ## Mechanism and language rules
-Use `_Alignas`/`alignas` or target-specific attributes when the C object must have stronger alignment. Correct alignment does not guarantee DMA addressability, physical contiguity, or cache coherence.
+An object declared with its type has an alignment requirement; `_Alignof` can query it. Converting a pointer does not make the pointed-to storage correctly aligned. Accessing an object through an improperly aligned lvalue can violate C requirements and can also fault on the target.
 
 ### What to reason about
 - What alignment does the C type require?
 - What alignment does the DMA engine require?
-- Does the linker place the object in a DMA-accessible memory region?
-- Are cache-line boundaries relevant?
-- Can the address be represented by the DMA descriptor format?
+- Does the linker guarantee placement alignment?
+- Does the buffer cross cache-line or burst boundaries?
+- Is a packed structure being used as a DMA descriptor?
 
 ## Embedded implications
-A correctly aligned buffer in ordinary RAM may still be inaccessible to a DMA engine if it resides in tightly coupled memory, external memory with unsuitable attributes, or a protected region. Alignment and placement must be specified together.
+Misalignment can cause bus faults, slower accesses, split DMA transactions, or hardware rejection. Descriptor rings often require alignment stronger than the natural alignment of their C fields.
 
 ### Firmware review angle
-Use linker sections and linker assertions to guarantee placement and alignment. Centralize DMA buffer declarations so future changes cannot silently move them into incompatible memory.
+Encode alignment in declarations or linker placement rather than relying on incidental addresses. Check section placement and map files for DMA pools.
 
 ## Edge cases and failure modes
-- Descriptor starts at an invalid alignment.
-- Buffer crosses a hardware boundary with special restrictions.
-- Cache maintenance rounds down/up to lines and touches neighbors.
-- Over-alignment changes RAM footprint or linker placement.
-- Casting an unaligned byte pointer to a wider object pointer causes misaligned access.
+- Stack pointer happens to be aligned on one build but not another.
+- Packed descriptor violates hardware alignment.
+- Cache-line sharing causes unintended maintenance effects.
+- Address alignment is correct but length/burst constraints are not.
 
 ## Example pattern
 ```c
+#include <stdint.h>
+
 struct dma_desc {
     uint32_t addr;
-    uint32_t len;
+    uint32_t length;
+    uint32_t flags;
 };
 
-_Alignas(32) struct dma_desc descriptors[8];
+_Alignas(32) static struct dma_desc desc;
 ```
-The `32` is illustrative; the required value must come from the hardware/platform contract.
+The `32` is illustrative; production alignment must come from the hardware contract.
 
 ## Verification / debugging
-Inspect the linker map and runtime address. Assert alignment with `_Static_assert` where compile-time known, and test actual DMA operation under cache-enabled and boundary-address conditions.
+Check `_Alignof`, `sizeof`, and actual addresses. Inspect linker maps and section placement. Test boundary addresses and cache-line crossings, not just naturally aligned allocations.
+
+Staff-level questions: Which alignment requirement is strongest? Who guarantees it—compiler, linker, allocator, or driver? What happens when a buffer crosses a cache line?
 
 ## Staff-level takeaway
-DMA alignment is a **three-way contract: C object alignment, linker placement, and hardware DMA constraints**. Satisfying only one layer is insufficient.
+DMA alignment is an **intersection of C, hardware, linker, and cache constraints**. Encode the strongest requirement explicitly and verify actual placement rather than assuming type alignment is enough.
 
 ## Related
 [[00_Chapter_Index]]
