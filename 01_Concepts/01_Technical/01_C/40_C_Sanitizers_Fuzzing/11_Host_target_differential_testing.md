@@ -1,28 +1,37 @@
 # Host-target differential testing
 
-> Canonical C topic note — chapter 40.
-
 ## Definition
-Differential testing compares behavior of two implementations or environments for the same inputs. In embedded C, a host implementation can be compared with the target implementation to reveal portability and representation differences.
+**Host-target differential testing** compares the behavior of the same C logic or test vectors across a host implementation and the embedded target. Differences can reveal assumptions about integer width, endianness, alignment, ABI, compiler behavior, or hardware dependencies.
+
+## Scope and boundaries
+The comparison is strongest for deterministic pure functions: encoders/decoders, checksums, parsers, state transitions, and numerical routines. It is not valid to expect identical timing, pointer values, floating-point environment, or hardware side effects across platforms.
 
 ## Mechanism and language rules
-The comparison requires a defined oracle: decoded fields, serialized bytes, state transitions, checksums, or mathematical results. Differences may be legitimate when behavior is implementation-defined, so first classify the C rule and target contract.
+Define a common input/output contract:
+
+```text
+input vector -> host implementation
+             -> target implementation
+             -> normalize observable result -> compare
+```
+
+For binary protocols, compare exact bytes. For numerical algorithms, define acceptable tolerance and floating-point environment explicitly.
 
 ## Embedded implications
-This approach is powerful for parsers, encoders, cryptographic wrappers, fixed-point algorithms, and protocol state machines. It can expose endianness, width, alignment, signedness, and floating-point assumptions without requiring every input to run on hardware.
+This technique is excellent for validating firmware protocol stacks against a host reference model. It can catch target-only truncation, signedness, padding, endian, and serialization defects. It is also useful for bootloader image validation and cryptographic test vectors where exact outputs are specified.
 
 ## Edge cases and failure modes
-- Treating host behavior as the specification.
-- Comparing undefined behavior instead of defined outputs.
-- Ignoring target-specific rounding or integer widths.
-- Using nondeterministic timestamps/randomness in the comparison.
+- Host and target intentionally use different integer sizes.
+- Structure padding is compared instead of serialized fields.
+- Undefined behavior produces divergent but apparently plausible outputs.
+- Floating-point differences are treated as failures without a defined tolerance.
+- Hardware-dependent behavior is accidentally included in the comparison.
 
 ## Verification / debugging
-Generate the same corpus for host and target, compare canonical outputs, and classify every mismatch. Add each confirmed portability defect as a regression test.
+Use shared golden vectors and record both outputs. When they differ, reduce to the smallest input and inspect types, object representation, alignment, and generated assembly. Run host sanitizers on the same vectors to determine whether the discrepancy comes from undefined behavior.
+
+## Performance, memory, timing and power
+Host execution can process large vector sets quickly; target execution validates the real architecture. Differential tests can therefore provide high confidence without requiring all fuzzing and sanitization to run on the MCU.
 
 ## Staff-level takeaway
-Differential testing is strongest when the oracle is derived from the product contract, not whichever implementation happened to be written first.
-
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+Define **what must be identical and what is allowed to differ** before building a differential test. The comparison is only as strong as its contract.
