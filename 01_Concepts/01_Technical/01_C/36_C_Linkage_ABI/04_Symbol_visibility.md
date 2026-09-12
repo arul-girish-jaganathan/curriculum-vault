@@ -3,41 +3,84 @@
 > Canonical C topic note — chapter 36.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Symbol visibility**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+**Symbol visibility** controls which linker symbols are exposed to other objects, shared libraries, dynamic loaders, or tooling. ISO C does not define ELF visibility, DLL exports, hidden symbols, or dynamic symbol tables. These are ABI/toolchain concepts layered on top of C linkage.
+
+Do not equate visibility with linkage: internal linkage (`static`) prevents cross-translation-unit references by the C language model, while visibility mechanisms can restrict or shape exposure of entities that otherwise have external linkage.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+A public API might be declared normally:
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+```c
+void device_init(void);
+int device_read(uint8_t *dst, size_t n);
+```
+
+A GCC/Clang ELF build may additionally use attributes such as `visibility("hidden")` or a linker version script. A Windows-oriented build may use `__declspec(dllexport)`/`dllimport`. These are implementation-specific.
+
+Typical visibility classes include:
+
+- **default** — potentially exported and preemptible in shared-object environments;
+- **hidden** — not exported for normal dynamic symbol lookup;
+- **protected** — exported but with special local binding semantics on supported systems;
+- platform-specific export/import mechanisms.
+
+Static embedded firmware often has no dynamic loader, but visibility still matters for symbol namespace hygiene, link-time optimization, map readability, binary interfaces, and library composition.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+Reducing externally visible symbols can improve modularity and sometimes code generation. It also prevents accidental dependencies on private functions/data when a reusable library is distributed as an object archive or binary.
+
+For firmware libraries, a deliberate public/private policy is valuable:
+
+```c
+/* public header */
+void uart_init(void);
+int uart_write(const void *data, size_t n);
+```
+
+Private helpers can use file-scope `static`, while cross-file implementation symbols can use an explicit visibility policy when the platform supports it.
 
 ### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+Treat the exported-symbol list as part of the interface. Compare symbol tables between releases to catch accidental API growth, symbol removal, or binding changes. For shared libraries, visibility can affect relocation, interposition and startup/runtime lookup; for bare-metal firmware, inspect the final image and archive extraction behavior.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
+A declaration being present in a public header does not guarantee that the final binary exports the symbol. Conversely, a symbol may become externally visible accidentally even though no public header documents it.
 
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
+Common problems include:
+
+- relying on platform visibility attributes in portable C;
+- hiding a symbol that another image component legitimately references;
+- assuming hidden visibility fixes an incompatible ABI;
+- allowing implementation symbols to become contractual APIs;
+- changing export lists without considering bootloader/application compatibility.
+
+Visibility does not make a function thread-safe, reentrant, immutable, or secure. It only changes name exposure/binding at the toolchain boundary.
 
 ## Example pattern
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
+/* API boundary */
+void sensor_start(void);
+
+/* Implementation detail */
+static void configure_clock(void)
 {
-    return x;
+    /* ... */
 }
 ```
 
+Prefer language-level internal linkage where it is sufficient; add platform visibility controls when a binary/shared-library boundary requires them.
+
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Use the compiler's symbol-dump tool, linker map, `nm`, `readelf -Ws`, or platform equivalents. Maintain an expected export list for reusable libraries. In CI, fail when private symbols unexpectedly become part of the supported ABI.
+
+Staff-level questions:
+- What is the supported binary interface?
+- Which symbols are intentionally exported?
+- Which boundary is static-link, dynamic-link, bootloader, or plugin based?
+- Could internal linkage remove accidental coupling?
+- Are visibility changes compatible with deployed consumers?
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+Visibility is **interface governance at the binary boundary**. Keep the public surface intentionally small, distinguish it from C linkage, and verify the actual symbol table rather than trusting source-level declarations.
 
 ## Related
 [[00_Chapter_Index]]
