@@ -1,47 +1,51 @@
 # Cache maintenance
 
-> Canonical C topic note — Chapter 45. Cache maintenance keeps CPU-visible and DMA-visible memory coherent on systems where caches are not automatically coherent with the DMA master.
+> Canonical C topic note — Chapter 45. Cache maintenance keeps CPU and DMA views of memory coherent when the platform does not provide hardware coherency. It is a platform concern beyond ISO C.
 
 ## Definition
-For a CPU writing a DMA source buffer, cache clean/write-back operations may be required before DMA reads it. For DMA-written memory, cache invalidation may be required before the CPU consumes it. Exact operations are architecture and cache-policy specific.
+For CPU-to-device transfers, dirty CPU cache lines may need cleaning/write-back before DMA reads memory. For device-to-CPU transfers, stale CPU cache lines may need invalidation before software consumes DMA-written data.
 
 ## Mechanism and language rules
-C's memory model does not define hardware cache coherency. `volatile` does not flush caches. Compiler barriers do not necessarily perform cache maintenance, and CPU memory barriers do not necessarily clean or invalidate caches.
+C's memory model does not describe CPU caches or DMA. A compiler barrier and a CPU/device memory barrier solve different problems: compiler ordering constrains code generation, while hardware barriers constrain memory-system visibility/order. Cache clean/invalidate operations address cache contents.
 
 ### What to reason about
-- Is the region cacheable?
-- Is the DMA master coherent?
-- What cache line size and alignment apply?
-- Must clean/invalidate cover complete lines?
-- What ordering is required before starting or after completing DMA?
+- Is the region cached?
+- Is the platform coherent?
+- What cache-line size and alignment apply?
+- Which direction is the transfer?
+- What ordering is required around ownership transfer?
+- Could adjacent data in the same cache line be affected?
+
+Do not substitute `volatile` for cache maintenance.
 
 ## Embedded implications
-Partial-line maintenance can corrupt unrelated data when cache operations operate at line granularity. Non-cacheable DMA pools simplify coherency at the cost of access latency and memory-region constraints.
+Non-coherent Cortex-class SoCs and many peripheral systems require explicit cache APIs. Incorrect maintenance can produce intermittent stale packets or corrupted descriptors, often disappearing in debug builds.
 
 ### Firmware review angle
-Centralize cache/DMA synchronization APIs and document ownership transitions. Do not scatter architecture-specific cache instructions throughout drivers.
+Centralize DMA cache operations and document whether APIs operate on aligned ranges, whole lines, or exact byte ranges. Avoid cleaning a buffer while another owner can modify it.
 
 ## Edge cases and failure modes
-- CPU reads stale cache after DMA completion.
-- CPU dirty cache overwrites newer DMA data later.
-- Cleaning an incorrectly aligned range affects neighboring objects.
-- Assuming coherent behavior on one MCU family and porting to a non-coherent system.
+- Dirty cache not written before device read.
+- CPU reads stale cache after device write.
+- Invalidate discards unrelated dirty data sharing a cache line.
+- Wrong cache-line alignment/range.
+- Cache maintenance performed before final CPU writes are complete.
 
 ## Example pattern
 ```c
-prepare_dma_for_device(buf, len); /* architecture-specific */
-start_dma(buf, len);
-wait_for_completion();
-prepare_dma_for_cpu(buf, len);    /* architecture-specific */
-consume(buf, len);
+prepare_tx_buffer(buf, len);
+cache_clean_for_device(buf, len);
+dma_start_tx(buf, len);
 ```
-The helper boundaries should hide cache-line and barrier details.
+For receive buffers, invalidate/synchronize at the documented completion boundary before CPU consumption.
 
 ## Verification / debugging
-Test with caches enabled and deliberately use patterns that expose stale data. Inspect cache-line alignment and memory attributes. Compare behavior using coherent and non-coherent mappings where the platform supports both.
+Run tests with caches enabled and disabled. Compare behavior across memory regions and transfer directions. Inspect cache-line alignment and use platform tracing or memory tests to distinguish stale data from actual overwrites.
+
+Staff-level questions: Is the interconnect coherent? What exactly does the cache API guarantee? Which barrier pairs with ownership transfer? Can two logical buffers share a cache line?
 
 ## Staff-level takeaway
-DMA cache handling is a **memory-visibility protocol**, not a C qualifier problem. Separate cache maintenance, compiler ordering, CPU barriers, and hardware ownership, and implement each at the correct abstraction layer.
+DMA cache correctness requires **coherency model + cache maintenance + ordering + ownership**. Treat these as one protocol rather than assuming `volatile` or a generic memory barrier is sufficient.
 
 ## Related
 [[00_Chapter_Index]]
