@@ -1,43 +1,68 @@
 # Cleanup on failure
 
-> Canonical C topic note — chapter 42.
+> Canonical C topic note — Chapter 42. Cleanup-on-failure ensures resources acquired before an error are released or returned to a known state before control leaves a function.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Cleanup on failure**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+C has no automatic destructor mechanism. Resource cleanup must be encoded explicitly through control flow. Common patterns use a single cleanup section, reverse-order release, helper functions, or structured status handling.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+Every acquisition creates an obligation. If acquisition A succeeds and acquisition B fails, the function must undo A before returning unless ownership has deliberately transferred elsewhere.
 
 ### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+- What resources have been acquired at each point?
+- In what order must they be released?
+- Is cleanup itself fallible?
+- Can the same resource be released twice?
+- Does cleanup run on every exit path?
+- Does the compiler's control-flow transformation preserve the defined semantics?
+
+A common C idiom uses `goto cleanup;` because it gives one auditable cleanup path without duplicating release logic. This is often safer than deeply nested conditionals.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+Resources include clocks, IRQ enables, mutexes, DMA channels, buffers, peripheral ownership, power rails, and hardware configuration—not only heap memory. Cleanup may need to restore registers and disable interrupts in the correct order.
 
 ### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+For real-time systems, define whether cleanup has a bounded worst-case duration. Do not perform blocking cleanup from ISR context. For hardware, distinguish “disable” from “restore previous state.”
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
+- Double-free or double-release after partially initialized state.
+- Cleanup assumes an initialization step that failed.
+- Cleanup order violates hardware dependencies.
+- Error path forgets a resource introduced by a later code change.
+- Cleanup failure overwrites the original error without preserving context.
 
 ## Example pattern
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
+status_t start(void)
 {
-    return x;
+    status_t st = STATUS_OK;
+    bool clock_on = false;
+    bool irq_on = false;
+
+    if (clock_enable() != STATUS_OK) { st = STATUS_IO; goto cleanup; }
+    clock_on = true;
+    if (irq_enable() != STATUS_OK) { st = STATUS_IO; goto cleanup; }
+    irq_on = true;
+
+cleanup:
+    if (irq_on)  { irq_disable(); }
+    if (clock_on) { clock_disable(); }
+    return st;
 }
 ```
+The state flags make partial acquisition explicit and cleanup idempotent with respect to this function's path.
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Inject failure after each acquisition and verify that every resource is released exactly once. Add assertions for ownership state in debug builds and use static analysis for leak/double-release patterns.
+
+Staff-level questions:
+- Is every acquisition paired with a release?
+- Is reverse-order cleanup required?
+- What if cleanup itself fails?
+- Can the cleanup path be shared safely across future changes?
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+Prefer **one auditable cleanup strategy** over clever control flow. Model resources as obligations and make partial initialization states explicit so that every failure path is deterministic and reviewable.
 
 ## Related
 [[00_Chapter_Index]]
