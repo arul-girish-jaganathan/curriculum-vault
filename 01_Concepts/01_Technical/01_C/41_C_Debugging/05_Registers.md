@@ -1,58 +1,57 @@
 # Registers
 
-> Canonical C topic note — Chapter 41. CPU registers are machine-level state. C describes abstract values and operations; it does not expose a portable register model except through implementation extensions and objects such as volatile MMIO.
+> Canonical C topic note — Chapter 41. CPU registers are architectural state used for computation, control flow, addressing, and ABI conventions. ISO C does not define a register file; compiler and target architecture determine the mapping from C values to registers.
 
 ## Definition
-Register inspection is the debugger's view of CPU registers such as general-purpose registers, stack pointer, program counter, status/control registers, and architecture-specific exception registers. Their names, widths, preservation rules, and meanings are defined by the target architecture and ABI, not ISO C.
+A register is a small, fast storage location inside the CPU. Important debugging registers include the program counter (PC), stack pointer (SP), status/flags register, return-address/link register, general-purpose registers, and sometimes control registers describing fault or privilege state.
+
+A C variable can be represented by a register value rather than RAM. Conversely, a source variable may be spilled between registers and memory during its lifetime.
 
 ## Mechanism and language rules
-The compiler maps C values to registers, stack locations, constants, or optimized-away representations. A function parameter may begin in an argument register; a return value may occupy a designated return register; callee-saved registers must survive calls when required by the ABI. Register allocation changes with optimization, inlining, instruction scheduling, and register pressure.
+The compiler's register allocator assigns live values to architectural registers while obeying the ABI and instruction constraints. Caller-saved registers may be destroyed by calls; callee-saved registers must be preserved according to the ABI. Debug information can describe register-based variable locations.
 
 ### What to reason about
-- Which instruction produced the value currently displayed?
-- Is the register caller-saved and therefore overwritten by a call?
-- Does the ABI assign a special meaning to the register?
-- Is the displayed value stale or asynchronously modified?
-- Are you inspecting CPU registers or peripheral registers mapped into memory?
-- During a fault, is the register set the pre-exception context or the handler's context?
+- Which ABI registers carry arguments and return values?
+- Which registers are caller- or callee-saved?
+- Is the displayed register value from the exact stopped instruction?
+- Are flags valid for the instruction sequence being inspected?
+- Is the CPU in thread, handler, privileged, or another execution mode?
+- Could an exception entry have changed SP or saved machine state?
 
-A debugger showing `r0 = 5` does not prove that a C variable currently has value 5 unless the debug location information and instruction point establish that relationship.
+The instruction pointer must be interpreted with the architecture's instruction width/alignment rules. A fault PC may point to the faulting instruction or, on some architectures/exceptions, require architecture-specific interpretation.
 
 ## Embedded implications
-Registers are often the fastest route to diagnosing faults. On ARM Cortex-M, for example, the PC, LR, SP, xPSR, fault status registers, and stacked exception context can identify the failing instruction and exception path. Other architectures have different conventions.
-
-Control/status registers can be privileged, banked, side-effecting, or write-sensitive. Reading or writing them through a debugger can alter system state. Peripheral registers should be treated separately from CPU registers and interpreted using the device reference manual.
+Registers expose hardware state that often cannot be inferred from C alone: fault status, interrupt masks, privilege state, MPU configuration, cache controls, peripheral buses, and exception return state. Reading them after a fault can reveal whether a failure was caused by invalid access, alignment, execution protection, or a peripheral event.
 
 ### Firmware review angle
-Record the architecture, core revision, ABI, compiler version, and exact instruction address. Do not copy a register-debugging recipe from one MCU family to another without verifying exception and ABI details.
+Document the target architecture and ABI in fault-analysis procedures. Do not copy register interpretations between MCU families merely because names such as `PC` or `SP` are common.
 
 ## Edge cases and failure modes
-- **Wrong context:** examining handler registers instead of the interrupted code's stacked context.
-- **Register reuse:** optimized code reuses a register for a different source variable.
-- **Lazy state saving:** floating-point or extended context may be saved conditionally.
-- **Special registers:** status/control registers can have privileged or side-effecting access.
-- **Debug read changes behavior:** some target registers are destructive-on-read.
+- **Wrong context:** inspecting the interrupted context instead of the exception-saved context.
+- **Register reuse:** assuming a source variable remains in the same register throughout a function.
+- **Special register constraints:** some registers have side effects or privileged access requirements.
+- **Instruction-address confusion:** compressed/fixed-width instruction sets and exception PC semantics differ.
 
 ## Example pattern
 ```c
-static uint32_t add(uint32_t a, uint32_t b)
+uint32_t add_and_publish(uint32_t a, uint32_t b)
 {
-    return a + b;
+    uint32_t result = a + b;
+    publish(result);
+    return result;
 }
 ```
-At a call boundary, the ABI may place `a` and `b` in registers and the result in a return register. The exact registers are architecture-specific. At higher optimization, the entire function may collapse into a single instruction or be inlined.
+At a call boundary, `a`, `b`, and the return value may occupy ABI-defined registers. A debugger showing a register is therefore often more meaningful than looking for a corresponding stack slot.
 
 ## Verification / debugging
-Disassemble around the PC and correlate each instruction with the ABI. For a fault, first preserve the raw register frame before attempting recovery. Decode status bits using the target vendor's documentation. Use debugger register views for observation, not as a substitute for architectural knowledge.
+At a fault, capture PC, SP, status, link/return state, general registers, and architecture-specific fault-status registers before attempting recovery. Preserve the raw numeric values so later tooling can reinterpret them.
 
-Staff-level questions:
-- Which registers are architecturally defined and which are ABI conventions?
-- Which state belongs to the faulting context?
-- What evidence ties a register to a C value?
-- Could an MMIO read or debugger action change the state?
+Map the PC to the exact binary, disassemble around it, and identify which registers feed the faulting instruction's address/data operands. Validate register meanings against the processor reference manual and ABI documentation.
+
+Staff-level questions: Which state is hardware-saved automatically? Which state must the handler save? Can the diagnostic code itself corrupt the evidence?
 
 ## Staff-level takeaway
-Register debugging becomes reliable when you reason **instruction-by-instruction through the ABI and exception model**. Source symbols are a convenience layer; raw register state plus disassembly is the authoritative evidence for machine-level failures.
+Registers are the bridge between **C-level intent and actual CPU state**. Expert debugging starts from architectural state, then reconstructs ABI, instruction, memory, and source-level meaning without assuming every source variable has a stable RAM representation.
 
 ## Related
 [[00_Chapter_Index]]
