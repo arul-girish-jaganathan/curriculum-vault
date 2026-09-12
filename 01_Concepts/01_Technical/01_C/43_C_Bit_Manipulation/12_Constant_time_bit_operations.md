@@ -1,50 +1,52 @@
 # Constant-time bit operations
 
-> Canonical C topic note — Chapter 43. Constant-time bit manipulation aims to make execution behavior independent of secret-dependent values. C syntax alone cannot guarantee constant machine-level timing.
+> Canonical C topic note — Chapter 43. Constant-time bit manipulation aims to avoid secret-dependent execution behavior, but C source alone cannot guarantee constant machine-level timing.
 
 ## Definition
-A constant-time algorithm avoids secret-dependent branches, memory accesses, and other operations whose timing can reveal information. This is a security property stronger than simply writing a loop with a fixed source-level iteration count.
+A constant-time implementation avoids secret-dependent branches, memory addresses, and other operations that can produce measurable timing differences. It is a security property evaluated against a defined target and threat model.
 
 ## Mechanism and language rules
-C specifies functional behavior, not instruction latency, caches, pipelines, branch prediction, interrupts, or compiler transformations. Therefore constant-time claims require an implementation and target model.
+C specifies functional semantics, not pipeline latency, caches, branch prediction, interrupt behavior, or compiler transformations. A branchless source expression may still compile into conditional instructions or use variable-latency operations.
 
 ### What to reason about
 - Are branches controlled by secret data?
 - Are table indices secret-dependent?
-- Can the compiler transform branchless code into branches?
-- Does the target have variable-latency arithmetic?
-- Can interrupts or caches dominate the timing signal?
+- Can optimization reintroduce branches?
+- Are arithmetic instructions data-dependent in latency on the target?
+- Do caches, flash wait states, or interrupts dominate the measurement?
+- Does undefined behavior give the optimizer extra freedom?
 
-Bitwise select idioms can avoid obvious branches, but signed overflow, invalid shifts, and undefined behavior must still be eliminated because the compiler can exploit UB when optimizing.
+Use unsigned arithmetic and eliminate invalid shifts/overflow before making timing claims.
 
 ## Embedded implications
-On MCUs without caches, timing analysis can be simpler, but interrupt latency, flash wait states, memory buses, and variable-latency instructions still matter. Cryptographic code often requires a defined threat model rather than a generic “constant-time” label.
+MCUs without caches can simplify analysis, but flash wait states, memory buses, interrupts, DMA contention, and variable-latency instructions still matter. Cryptographic primitives should normally come from vetted implementations with established constant-time properties.
 
 ### Firmware review angle
-Prefer vetted cryptographic primitives and compiler/target combinations with established constant-time analysis. Inspect assembly for security-critical functions and test timing distributions, while recognizing that board-level noise does not prove absence of leakage.
+Fix compiler/toolchain versions for security-sensitive builds, inspect optimized assembly, and evaluate the complete call path—not just a helper function. Consider whether hardware crypto accelerators provide a stronger isolation boundary.
 
 ## Edge cases and failure modes
-- Secret-dependent table lookup leaks through memory timing.
-- A branchless source expression becomes conditional machine code.
-- Undefined behavior enables unexpected compiler transformations.
+- Secret-dependent table lookup.
+- Branchless source becomes conditional machine code.
+- Undefined behavior enables unexpected transformations.
 - Data-dependent instruction latency is ignored.
-- A constant-time function is called through a path with secret-dependent control flow.
+- A constant-time primitive is called from a secret-dependent outer branch.
 
 ## Example pattern
 ```c
-uint32_t select_mask(uint32_t condition)
+uint32_t mask_from_bool(unsigned condition)
 {
-    uint32_t mask = 0U - (condition != 0U);
-    return mask;
+    return 0U - (uint32_t)(condition != 0U);
 }
 ```
-This illustrates a common mask construction; whether the surrounding algorithm is constant-time still requires target/compiler analysis.
+This is a common mask construction; it does not by itself prove the complete algorithm is constant-time.
 
 ## Verification / debugging
-Inspect optimized assembly, use static constant-time analysis where available, test representative timing distributions, and review memory-access patterns. Keep compiler versions fixed for security-sensitive builds.
+Inspect optimized assembly and memory-access traces. Use constant-time analysis tools where available and measure timing distributions under controlled conditions. Keep security review focused on the threat model and leakage channel rather than a generic “branchless” label.
+
+Staff-level questions: What attacker can measure timing? Which compiler transformations are possible? Are memory accesses secret-independent? What hardware noise sources exist, and which ones are actually relevant?
 
 ## Staff-level takeaway
-Constant-time is a **whole toolchain and threat-model property**, not a visual property of C code. Eliminate UB, constrain compiler freedom appropriately, inspect generated code, and validate the complete execution path.
+Constant-time behavior is a **whole-toolchain, target, and threat-model property**. Eliminate UB, control compiler assumptions, inspect generated code, and validate the complete execution path.
 
 ## Related
 [[00_Chapter_Index]]
