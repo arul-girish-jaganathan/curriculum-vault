@@ -1,35 +1,37 @@
 # Population count
 
-> Canonical C topic note — Chapter 43. Population count (popcount) counts the number of set bits in an integer representation.
+> Canonical C topic note — Chapter 43. Population count, or popcount, returns the number of set bits in an integer. It is a basic primitive for masks, bitsets, checksums, scheduling, and algorithms.
 
 ## Definition
-For an unsigned word, popcount returns a value from zero through the word width. It is useful for masks, resource allocation, parity-related algorithms, bitmap management, and protocol validation. C does not require a particular implementation strategy.
+For an unsigned value, popcount is the number of one bits in its representation. The result is bounded by the operand width.
 
 ## Mechanism and language rules
-A classic portable algorithm repeatedly clears the lowest set bit: `x &= x - 1`, incrementing a counter until zero. Hardware may provide a dedicated instruction; compilers can recognize loops or expose builtins.
+A portable implementation can repeatedly clear the lowest set bit with `x &= x - 1`, counting iterations. The expression relies on unsigned arithmetic, where wraparound is defined. C23 and implementation libraries may provide more direct facilities, while compiler builtins can map to target instructions.
 
 ### What to reason about
-- What is the operand width?
-- Is the operand unsigned?
-- Is latency required to be constant with respect to input population?
-- Does the target have a hardware instruction?
-- Is the result type large enough to represent the maximum count?
+- What width is being counted?
+- Is the operand signed or unsigned?
+- Is execution time allowed to depend on the number of set bits?
+- Does the target have a hardware popcount instruction?
+- Is the result type large enough for the maximum count?
+
+Choose the algorithm based on timing requirements, compiler support, and target capabilities.
 
 ## Embedded implications
-The Kernighan-style loop takes work proportional to the number of set bits. A lookup-table implementation trades flash for predictable operations. A native instruction may be both smaller and faster. On timing-sensitive or security-sensitive paths, input-dependent latency must be considered.
+Popcount can be used for active-channel counts, bitmap allocation, feature masks, and error syndromes. A variable-iteration implementation may be undesirable in a constant-time security path or hard real-time path.
 
 ### Firmware review angle
-For a 32-bit word the maximum result is 32, so a small unsigned type is sufficient for the result, but using `unsigned` often avoids unnecessary conversion issues. Prefer compiler-supported intrinsics behind a portability layer when performance is critical.
+Use fixed-width types and isolate compiler intrinsics when portability is required. Measure actual generated code rather than assuming a clever source idiom is faster.
 
 ## Edge cases and failure modes
-- Signed operands invite representation/sign issues.
-- Lookup tables can create cache-dependent timing on larger systems.
-- Assuming hardware popcount exists on every target harms portability.
-- Treating the count as parity confuses two different operations.
+- Counting the wrong width after implicit promotion.
+- Variable execution time violates a timing/security requirement.
+- Signed input creates confusing representation assumptions.
+- Target builtin availability differs between toolchains.
 
 ## Example pattern
 ```c
-unsigned popcount32(uint32_t x)
+static unsigned popcount32(uint32_t x)
 {
     unsigned count = 0U;
     while (x != 0U) {
@@ -39,13 +41,15 @@ unsigned popcount32(uint32_t x)
     return count;
 }
 ```
-The loop removes one set bit per iteration.
+This performs one iteration per set bit.
 
 ## Verification / debugging
-Test zero, one-bit values, all bits set, alternating patterns, and random words. Compare against a trusted host implementation. Benchmark worst-case and best-case latency on the actual MCU if timing matters.
+Test zero, one, all ones, alternating bits, and highest-bit-only values. Compare against a trusted reference or compiler builtin. Benchmark across realistic data distributions and optimization levels.
+
+Staff-level questions: Is data-dependent timing acceptable? Does the compiler lower this to a hardware instruction? Is the width explicit?
 
 ## Staff-level takeaway
-Choose popcount implementation based on **target instruction set, code size, latency determinism, and security requirements**, not merely source-level elegance.
+Popcount is simple mathematically but has **algorithmic, timing, and toolchain choices**. Select the implementation based on the actual target contract rather than source-level cleverness.
 
 ## Related
 [[00_Chapter_Index]]
