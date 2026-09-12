@@ -3,41 +3,22 @@
 > Canonical C topic note — chapter 40.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **AddressSanitizer**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+AddressSanitizer (ASan) is a compiler/runtime instrumentation technique for detecting many memory-safety errors, including out-of-bounds accesses and use-after-free. It is primarily a development/test tool, not a replacement for a production memory-safety strategy.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
-
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+Instrumentation surrounds memory accesses and uses shadow metadata to identify poisoned red zones and invalid regions. Reports typically identify the access, stack trace, allocation/free history, and memory region.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
-
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+ASan is often easiest on a host build because embedded targets may lack RAM, address-space, runtime, or debugger support. Host testing can still exercise protocol parsing, state machines, serializers, allocators, and other target-independent logic.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
-```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
-```
+ASan does not prove absence of all UB, does not model every hardware register, and may not catch bugs outside its instrumentation coverage. Instrumentation changes memory layout and timing, so an ASan firmware image is not timing-equivalent to production.
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Run deterministic reproductions under ASan, preserve the first useful stack trace, and reduce the input. Combine with UBSan, static analysis, fuzzing, and targeted hardware tests. Never “fix” a report by suppressing it before understanding the lifetime/bounds contract.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+Use ASan as a high-sensitivity memory bug detector in a layered verification strategy, with host/target boundaries explicitly documented.
 
 ## Related
 [[00_Chapter_Index]]
