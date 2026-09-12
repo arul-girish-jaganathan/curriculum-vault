@@ -1,38 +1,45 @@
 # Loop optimization
 
-> Canonical C topic note — chapter 37.
-
 ## Definition
-Loop optimization transforms repeated computation while preserving required C behavior. Common transformations include invariant-code motion, induction-variable simplification, unrolling, fusion, fission, interchange, unswitching, vectorization, and strength reduction.
+**Loop optimization** transforms repetitive control flow to reduce execution time, code size, memory traffic, or energy while preserving C semantics. Common transformations include induction-variable simplification, invariant-code motion, unrolling, peeling, fusion, distribution, unswitching, vectorization, strength reduction, and branch simplification.
+
+## Scope and boundaries
+The compiler may apply a transformation only when it can prove the required semantics. Pointer aliasing, signed overflow, volatile accesses, function calls, possible traps, and observable side effects can prevent transformations. Correct loop structure and defined behavior therefore matter more than manually forcing a particular assembly pattern.
 
 ## Mechanism and language rules
-Loops are attractive because small improvements multiply by iteration count. The compiler needs proof that transformations preserve dependencies, overflow semantics, aliasing rules, volatile accesses, and observable effects.
+Example:
 
 ```c
 for (size_t i = 0; i < n; ++i)
-    dst[i] = src[i] + bias;
+    sum += a[i] * scale;
 ```
 
-A compiler may hoist `bias`, choose wider registers, unroll iterations, or vectorize if aliasing and target constraints permit. Signed overflow, pointer provenance/lifetime rules, and possible overlap can block transformations or make incorrect source code appear to work only at low optimization.
+The compiler may hoist an invariant `scale`, simplify induction variables, unroll iterations, vectorize loads, or use target-specific instructions. The source loop count does not imply a particular instruction count.
+
+### Loop-carried dependencies
+A dependency such as `a[i] = a[i - 1] + 1` limits parallelization because iteration `i` depends on the previous iteration. Conversely, independent iterations are strong candidates for vectorization or unrolling.
+
+### Aliasing matters
+If `a`, `b`, and `out` may overlap, the compiler must preserve that possibility unless the program contract or `restrict` establishes otherwise. Incorrect alias assumptions can produce wrong optimized results, not merely slower code.
 
 ## Embedded implications
-Loop optimization directly affects CPU cycles, flash size, instruction-cache behavior, memory bandwidth, and energy. Unrolling can reduce branch overhead but increase code size. Vectorization may be irrelevant or unavailable on small MCUs but important on DSP/SIMD-capable cores.
+Loops dominate many DSP, filtering, packet parsing, checksum, sensor, and control workloads. On MCUs without SIMD, unrolling may trade flash for fewer branch instructions. On cached CPUs, vectorization and memory locality can dominate. On tiny deterministic MCUs, code-size growth and interrupt latency may matter more than average throughput.
 
-For real-time firmware, average loop speed is insufficient. Consider worst-case iterations, interrupt interference, cache state, memory wait states, and bounds checks. Avoid hand-unrolling until measurements show a need.
+MMIO polling loops require special care: the object representing changing hardware state normally needs `volatile`, and waiting for a peripheral should have a timeout or fault policy rather than an accidental infinite loop.
 
 ## Edge cases and failure modes
-- Assuming `n` is nonzero or within a safe range without a contract.
-- Violating aliasing assumptions between `src` and `dst`.
-- Using signed arithmetic where overflow is possible.
-- Expecting a volatile loop to be freely optimized.
-- Creating huge unrolled code that increases flash or cache misses.
+- Signed integer overflow inside induction variables is undefined behavior and can enable surprising transformations.
+- Using floating-point reassociation when strict numerical behavior matters.
+- Assuming loop unrolling always improves performance.
+- Ignoring aliasing between input and output buffers.
+- Optimizing a loop that is actually synchronization or hardware polling.
+- Creating huge code through manual unrolling when the compiler would make a better target-specific choice.
 
 ## Verification / debugging
-Use optimization reports and compare generated assembly. Benchmark representative sizes and boundary cases on the target. Use sanitizers and static analysis on host builds to expose overflow, bounds, and aliasing defects before interpreting optimizer behavior.
+Measure cycle counts on the target using a hardware timer or trace facility. Inspect generated assembly and compiler optimization/vectorization reports. Compare code size and worst-case latency, not just average benchmark throughput. Test boundary cases such as `n == 0`, one element, maximum supported length, overlapping buffers where allowed, and interrupt preemption.
+
+## Performance, memory, timing and power
+Loop transformations can reduce branches and loop-control overhead, improve instruction-level parallelism, and exploit cache or SIMD. They can also increase flash, register pressure, stack spills, or instruction-cache misses. For embedded systems, evaluate energy per operation and worst-case execution time in addition to average throughput.
 
 ## Staff-level takeaway
-Optimize loops by identifying the dominant resource and preserving proof obligations. A fast loop that depends on UB, accidental non-aliasing, or a particular compiler version is not a robust optimization.
-
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+Optimize the **algorithm, data layout, aliasing contract, and measurement method** before hand-writing instruction-shaped C. A loop that is simple, well-defined, and explicit about ownership and concurrency gives the optimizer the greatest freedom.
