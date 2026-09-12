@@ -1,43 +1,50 @@
 # DMA ownership
 
-> Canonical C topic note — chapter 45.
+> Canonical C topic note — Chapter 45. DMA ownership defines which execution agent may read or modify a buffer at each phase of a transfer. Correct C pointer usage alone cannot establish hardware ownership.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **DMA ownership**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+A DMA transfer gives a peripheral/DMA engine access to memory while the CPU may otherwise continue executing. Ownership must transition explicitly: CPU-owned -> DMA-owned -> CPU-owned, or through a more detailed descriptor state machine.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+The pointer passed to DMA is a machine address interpreted by hardware. C object lifetime and pointer validity still matter, but the DMA engine is not a C abstract-machine thread. Synchronization therefore spans C memory semantics, cache/coherency rules, bus fabric, and DMA programming requirements.
 
 ### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+- Who may read/write the buffer now?
+- When is ownership transferred?
+- Is the buffer still alive and mapped?
+- Are cache clean/invalidate operations required?
+- What barrier orders descriptor publication before DMA start?
+- Can the CPU touch the buffer while DMA owns it?
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+DMA improves CPU efficiency but introduces coherency, lifetime, alignment, and race hazards. A stack buffer is generally unsafe if DMA outlives the function call.
 
 ### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+Represent ownership explicitly in driver state. Do not expose a mutable buffer to callers while hardware can still write it. Define completion semantics precisely: interrupt may mean descriptor complete, FIFO consumed, or final bus write visible depending on hardware.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
+- CPU modifies a buffer while DMA is reading it.
+- DMA writes after the C object lifetime ends.
+- Cache contains stale CPU data.
+- Descriptor is reused before hardware stops using it.
+- Peripheral error path fails to return ownership.
 
 ## Example pattern
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
+typedef enum { BUF_CPU, BUF_DMA } owner_t;
+
+struct dma_buf {
+    uint8_t data[256];
+    owner_t owner;
+};
 ```
+The enum is only a software model; hardware and cache rules must enforce the actual transition.
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Instrument ownership transitions and assert legal state changes. Test early completion, errors, reset during DMA, cache-enabled operation, and maximum transfer lengths.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+DMA ownership is a **lifetime + concurrency + hardware-address contract**. Make ownership transitions explicit and impossible to bypass casually.
 
 ## Related
 [[00_Chapter_Index]]
