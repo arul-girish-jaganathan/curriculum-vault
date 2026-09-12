@@ -3,41 +3,65 @@
 > Canonical C topic note — chapter 31.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **time.h**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+`time.h` provides calendar-time and processor-time facilities including `time_t`, `struct tm`, `clock_t`, `time`, `clock`, `difftime`, `gmtime`, `localtime`, `mktime`, `strftime`, and related functions. The C standard intentionally leaves important representation details implementation-defined: the range and representation of `time_t`, epoch conventions, calendar range, and relationship to the host's real-time clock are not universal.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+```c
+#include <time.h>
+
+time_t now = time(NULL);
+struct tm *utc = gmtime(&now);
+```
+
+`time` obtains the implementation's current calendar time when available. `gmtime` converts it to a broken-down UTC representation and `localtime` converts it according to the implementation's local-time rules. `mktime` converts a broken-down local time back to `time_t`. `strftime` formats a `struct tm` into text.
+
+`clock` measures processor time consumed by the program according to the implementation, not necessarily elapsed wall-clock time. `difftime` is the portable way to compute differences between `time_t` values.
 
 ### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+- `time_t` is not guaranteed to be a signed 32-bit Unix timestamp.
+- `clock_t` and `CLOCKS_PER_SEC` describe processor-time measurement, not a universal hardware timer.
+- `struct tm` fields have defined ranges and semantics; `tm_year` is years since 1900 and `tm_mon` is zero-based.
+- `mktime` normalizes fields and can therefore accept values outside their nominal ranges.
+- `gmtime`/`localtime` return implementation-managed storage; later calls may overwrite it.
+- Time zones, daylight-saving rules, and leap-second behavior are largely implementation/environment concerns.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+Many MCUs have no battery-backed real-time clock or OS time service. A freestanding libc may implement only a subset of `time.h`, or provide hooks that the application must connect to an RTC/OS clock.
+
+For periodic scheduling, use a monotonic hardware/RTOS tick rather than calendar time. Calendar time can jump because of synchronization, user changes, RTC correction, or rollover. Protocol timestamps should specify width, epoch, timezone, and units explicitly rather than assuming `time_t` layout.
 
 ### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+Determine the source of wall-clock time, resolution, rollover behavior, startup validity, synchronization method, and interrupt/RTOS interaction. Measure formatting cost if `strftime` is enabled, and verify behavior when the clock is invalid or unavailable.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
+Do not use `difftime`-style calendar arithmetic as a replacement for a monotonic deadline mechanism. Local time can move backward or forward. `mktime` can normalize dates unexpectedly, and DST transitions can make local civil times ambiguous or nonexistent.
 
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
+Never serialize raw `time_t` unless the product contract explicitly defines its representation. Avoid assuming `sizeof(time_t)` or an epoch based only on a particular desktop Unix environment.
 
 ## Example pattern
+For embedded elapsed-time logic, use an explicitly defined unsigned tick counter and wrap-safe comparison:
+
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
+static int deadline_reached(uint32_t now, uint32_t deadline)
 {
-    return x;
+    return (int32_t)(now - deadline) >= 0;
 }
 ```
 
+Use `time.h` calendar functions when actual civil time is required.
+
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Test dates around rollover boundaries, month/year transitions, DST changes where applicable, invalid RTC state, and counter wrap. Verify `time_t` size and semantics on every target. Compare elapsed-time measurements against a known hardware timer and inspect generated code when timing overhead matters.
+
+Staff-level questions:
+- Is this wall-clock time or monotonic elapsed time?
+- What happens across reset and RTC loss?
+- What epoch and width does the protocol define?
+- Can time move backward?
+- What does the target libc actually implement?
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+The key architectural distinction is **civil time versus monotonic time**. `time.h` is appropriate for calendar representation and formatting, but embedded scheduling, timeout logic, and protocol timing should use explicitly defined monotonic clocks with documented width, resolution, and rollover behavior.
 
 ## Related
 [[00_Chapter_Index]]
