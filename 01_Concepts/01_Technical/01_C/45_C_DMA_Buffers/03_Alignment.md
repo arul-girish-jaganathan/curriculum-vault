@@ -1,43 +1,49 @@
 # Alignment
 
-> Canonical C topic note — chapter 45.
+> Canonical C topic note — Chapter 45. DMA buffers and descriptors often require stronger alignment than ordinary C objects because hardware accesses memory in fixed-width or cache-line-sized transactions.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Alignment**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+C requires objects to meet their type's alignment requirements. DMA hardware can impose additional constraints: descriptor alignment, buffer alignment, address boundaries, burst boundaries, or cache-line alignment. These hardware requirements are outside ISO C.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+Use `_Alignas`/`alignas` or target-specific attributes when the C object must have stronger alignment. Correct alignment does not guarantee DMA addressability, physical contiguity, or cache coherence.
 
 ### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+- What alignment does the C type require?
+- What alignment does the DMA engine require?
+- Does the linker place the object in a DMA-accessible memory region?
+- Are cache-line boundaries relevant?
+- Can the address be represented by the DMA descriptor format?
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+A correctly aligned buffer in ordinary RAM may still be inaccessible to a DMA engine if it resides in tightly coupled memory, external memory with unsuitable attributes, or a protected region. Alignment and placement must be specified together.
 
 ### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+Use linker sections and linker assertions to guarantee placement and alignment. Centralize DMA buffer declarations so future changes cannot silently move them into incompatible memory.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
+- Descriptor starts at an invalid alignment.
+- Buffer crosses a hardware boundary with special restrictions.
+- Cache maintenance rounds down/up to lines and touches neighbors.
+- Over-alignment changes RAM footprint or linker placement.
+- Casting an unaligned byte pointer to a wider object pointer causes misaligned access.
 
 ## Example pattern
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
+struct dma_desc {
+    uint32_t addr;
+    uint32_t len;
+};
+
+_Alignas(32) struct dma_desc descriptors[8];
 ```
+The `32` is illustrative; the required value must come from the hardware/platform contract.
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Inspect the linker map and runtime address. Assert alignment with `_Static_assert` where compile-time known, and test actual DMA operation under cache-enabled and boundary-address conditions.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+DMA alignment is a **three-way contract: C object alignment, linker placement, and hardware DMA constraints**. Satisfying only one layer is insufficient.
 
 ## Related
 [[00_Chapter_Index]]
