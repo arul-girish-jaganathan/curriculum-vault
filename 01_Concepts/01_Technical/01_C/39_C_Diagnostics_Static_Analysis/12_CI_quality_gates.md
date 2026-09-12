@@ -1,28 +1,36 @@
 # CI quality gates
 
-> Canonical C topic note — chapter 39.
-
 ## Definition
-A CI quality gate turns diagnostics and analysis into enforceable release criteria. A useful gate measures defect risk, not merely whether a tool executed successfully.
+**CI quality gates** turn engineering requirements into automated build or analysis conditions that must pass before code can merge or release. For C firmware, gates commonly cover compilation warnings, static analysis, tests, sanitizers, coverage, size budgets, and artifact integrity.
+
+## Scope and boundaries
+A gate should measure a defined risk, have deterministic inputs, and produce an actionable failure. Gates that are routinely bypassed lose their value. Not every diagnostic belongs in a hard gate; severity and ownership should be explicit.
 
 ## Mechanism and language rules
-Typical gates include clean compilation, selected warnings as errors, static-analysis severity limits, MISRA/CERT findings, sanitizer tests, unit coverage, image-size limits, and artifact provenance. Each gate needs an owner and an explicit exception process.
+A layered pipeline can be:
+
+```text
+compile -> warnings -> static analysis -> unit tests -> sanitizers
+       -> target build -> size/map checks -> integration/release tests
+```
+
+Use changed-code gates for fast feedback and full-suite gates for release confidence.
 
 ## Embedded implications
-Firmware gates should include all supported configurations and the exact production build. Memory-map overflow, ABI mismatch, generated-code drift, and target-specific diagnostics must not be hidden behind a host-only green build.
+Useful firmware gates include zero new high-severity static-analysis findings, clean release warnings, flash/RAM budgets, successful linker assertions, ABI compatibility checks, boot-image validation, and host sanitizer tests. Hardware-in-loop jobs can cover target-only properties such as MMIO, interrupts, DMA, and timing.
 
 ## Edge cases and failure modes
-- Gates that check only one build variant.
-- Unreviewed suppressions bypassing analysis.
-- Flaky hardware-in-loop tests blocking unrelated work.
-- Measuring coverage without meaningful fault assertions.
+- CI tests only the host build.
+- Gates use different compiler flags than release.
+- A flaky hardware test is ignored until it becomes meaningless.
+- Size limits are checked only after release packaging.
+- Static-analysis baselines allow regressions.
 
 ## Verification / debugging
-Keep gate configuration version-controlled. Make failures actionable and archive reports. Periodically test that intentionally introduced defects fail the expected gate; otherwise a gate may exist only on paper.
+Every gate should publish its inputs and outputs: tool versions, flags, source revision, logs, reports, firmware hash, and map/size data. Make failures reproducible locally where practical. Track gate health and time-to-fix rather than simply counting pipeline failures.
+
+## Performance, memory, timing and power
+CI gates add build time, but early failure reduces integration cost. Size and timing regression tests directly protect firmware resource budgets. Cache immutable dependencies without allowing stale build inputs to bypass the dependency graph.
 
 ## Staff-level takeaway
-A quality gate is a tested control. Its effectiveness should itself be demonstrated through seeded defects, audits, and trend metrics.
-
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+Quality gates are **automated policy enforcement**. Start with high-value risks, keep results trustworthy, and make the release pipeline stricter than—not different from—the developer build.
