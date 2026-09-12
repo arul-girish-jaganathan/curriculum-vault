@@ -1,62 +1,52 @@
 # Breakpoints
 
-> Canonical C topic note — Chapter 41. A breakpoint is a debugger-controlled execution stop. It is an observation mechanism outside ISO C, and its implementation, availability, and timing effects depend on the CPU, debug architecture, probe, compiler output, and debugger.
+> Canonical C topic note — chapter 41.
 
 ## Definition
-A breakpoint causes execution to stop when a selected instruction address or source location is reached. A source breakpoint is translated through debug information into one or more machine-code locations. A function breakpoint resolves a symbol; a hardware breakpoint usually compares the program counter against an address, while a software breakpoint modifies executable code when the target permits it.
-
-The key distinction is between **source intent** and **machine location**. One C line can produce multiple locations, and an inlined function can produce instances at several addresses.
+A breakpoint is a debugger-controlled condition that stops CPU execution when a selected instruction or event is reached. The C language does not define breakpoints; they are supplied by debug hardware, a debugger, an operating system, or instrumentation.
 
 ## Mechanism and language rules
-Breakpoints do not change ISO C rules, but they can change the execution environment. A software breakpoint may replace an instruction with a trap instruction and restore it when continuing. Hardware breakpoints use dedicated debug comparators and usually avoid code modification.
+The common software-breakpoint model replaces an instruction with a trap instruction, remembers the original instruction, and restores it when execution resumes. Hardware breakpoints instead use processor debug comparators to match an instruction address, and often data accesses. Exact counts and capabilities are architecture-specific.
 
-### What to reason about
-- Is the selected source line actually represented in the current optimized binary?
-- Is the breakpoint hardware- or software-based?
-- How many hardware breakpoint resources are available?
-- Does setting it modify flash/RAM or require a debug monitor?
-- Can the breakpoint be hit by multiple threads or cores?
-- Does stopping execution alter watchdog, interrupt, DMA, or peripheral behavior?
+A source breakpoint is translated approximately as:
+`C source location → debug line table → address range → machine instruction`.
 
-A conditional breakpoint may evaluate a condition each time the location is reached; this can be much more expensive than a simple instruction-address stop.
+A breakpoint therefore depends on the exact ELF/image and debug information. Multiple source statements can map to one instruction, and optimized code can move, merge, inline, or eliminate operations.
+
+### Conditional and temporary breakpoints
+A conditional breakpoint evaluates a predicate each time the breakpoint is hit. A temporary breakpoint removes itself after the first stop. Conditions involving function calls can change program state and can be unsafe in firmware.
 
 ## Embedded implications
-On MCUs, hardware instruction breakpoints are limited resources. Flash-resident code may require hardware comparators because modifying flash is impractical or slow. Some probes implement flash breakpoints through temporary patches, while some CPUs provide dedicated debug resources.
+On MCUs, breakpoint resources are limited. Software breakpoints may be impossible in flash, execute-only memory, ROM, or protected regions. Hardware breakpoint comparators are finite. Halting the core may not halt timers, DMA, watchdogs, other cores, or external devices.
 
-Halting can cause missed deadlines, watchdog expiry, changed interrupt ordering, stalled communication, or altered peripheral state. A breakpoint is therefore inappropriate for diagnosing every real-time failure.
+A breakpoint inside a high-rate ISR can distort latency dramatically. For timing-sensitive firmware, prefer trace, GPIO instrumentation, counters, or non-halting logging.
 
-### Firmware review angle
-Record the exact breakpoint type and target configuration when reproducing a timing-sensitive bug. Prefer non-halting trace or instrumentation when the failure depends on latency, races, or external bus activity.
-
-## Edge cases and failure modes
-- **Breakpoint never hits:** the function was optimized away, inlined elsewhere, or the symbol file does not match the image.
-- **Too many breakpoints:** hardware resources are exhausted.
-- **Breakpoint changes behavior:** halting changes timing or causes watchdog/reset behavior.
-- **ROM/flash restriction:** software patching is unavailable or unsafe.
-- **Conditional breakpoint perturbation:** evaluating the condition may add significant latency.
-
-## Example pattern
+### Example investigation
 ```c
-static void process_packet(const uint8_t *data, size_t length)
-{
-    if (length > MAX_PACKET) {
-        return;
-    }
-    consume(data, length); /* useful source breakpoint candidate */
+if (rx_len > sizeof(rx_buf)) {
+    error_count++;
+    return -1;
 }
 ```
-In optimized code, the call may be inlined, transformed, or absent if its observable effect is eliminated. Break on the generated function or instruction address when necessary.
+Set a breakpoint on the error path, then inspect `rx_len`, the caller, and the buffer ownership. If the fault disappears when stopped, suspect a race or timing dependency rather than assuming the breakpoint fixed the bug.
+
+## Edge cases and failure modes
+- Breakpoint cannot bind because the code was inlined or removed.
+- A breakpoint lands on a shared instruction generated for several source lines.
+- Software breakpoint patching fails because memory is read-only or not writable.
+- A conditional expression has side effects.
+- A breakpoint in an interrupt handler causes missed deadlines or watchdog resets.
+- Stopping one core while another continues can create misleading shared-memory observations.
+- Breakpoints inserted after startup may miss an early boot failure.
 
 ## Verification / debugging
-First verify the image and symbol file match. Then inspect the resolved address and instruction bytes. If a source breakpoint behaves unexpectedly, disassemble the surrounding range and set an address breakpoint on the exact instruction.
-
-For embedded diagnosis, test both “halted” and “running” behavior. If the defect disappears only when a breakpoint is present, switch to counters, trace, GPIO timestamps, watchpoints, or persistent breadcrumbs.
-
-Staff-level questions: How many breakpoint resources are available? What timing distortion does the breakpoint introduce? Is the breakpoint observing the real production path or a debug-only code shape?
+Confirm the loaded image and symbols match. Check whether the breakpoint is hardware or software and how many resources remain. For intermittent failures, compare behavior with and without breakpoints. If halting changes behavior, replace the breakpoint with a tracepoint-like mechanism: timestamped ring-buffer events, GPIO edges, ETM/trace where available, or counters sampled after failure.
 
 ## Staff-level takeaway
-Use breakpoints as **controlled experiments**, not merely convenient stops. Understand their machine-level implementation and explicitly account for their effect on timing, concurrency, watchdogs, and hardware state.
+Choose breakpoints based on the failure's temporal properties. A breakpoint is excellent for deterministic control-flow bugs but can destroy the evidence for concurrency, real-time, watchdog, DMA, and power-state bugs. Senior debugging asks not only “where should I stop?” but “will stopping preserve the system behavior I am trying to observe?”
 
 ## Related
 [[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+[[03_Watchpoints]]
+[[07_Optimized_code_debugging]]
+[[12_Debugging_production_firmware]]
