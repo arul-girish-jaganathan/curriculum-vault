@@ -1,60 +1,54 @@
 # Debugger scripting
 
-> Canonical C topic note — Chapter 41. Debugger scripting automates repeatable target inspection and control. It is debugger-specific tooling, not C syntax, and should be treated as an engineering instrument with a defined safety and reproducibility model.
+> Canonical C topic note — Chapter 41. Debugger scripting automates repeatable target inspection and control. It is tooling rather than C syntax, so its correctness depends on the debugger, probe, binary, ABI, memory map, and target state.
 
 ## Definition
-A debugger script is a sequence of commands or a debugger extension that can set breakpoints, inspect registers/memory, evaluate expressions, configure target state, collect traces, or automate repetitive tests. Common environments provide command languages, Python APIs, GDB/MI interfaces, IDE macros, or probe-specific scripting.
+A debugger script is a command sequence or extension that sets breakpoints, inspects registers and memory, evaluates symbols, configures target state, collects traces, or automates repetitive experiments. Environments may expose command languages, Python APIs, GDB/MI, IDE macros, or probe-specific interfaces.
 
 ## Mechanism and language rules
-The script operates on the compiled program and target state. It can use symbols and source names when debug information exists, or raw addresses/registers when it does not. Script correctness therefore depends on the binary, ABI, memory map, debugger version, and target configuration.
+Scripts operate on compiled artifacts and live machine state. Symbol-based commands depend on debug information; raw addresses depend on the target memory map. A script must therefore encode its assumptions explicitly.
 
 ### What to reason about
-- Does the script read ordinary RAM or side-effecting MMIO?
-- Is an address derived from symbols or hard-coded?
-- Does the script assume a particular optimization level?
-- Does it halt execution or merely observe state?
-- Are commands idempotent and safe after partial failure?
-- Can the script itself perturb timing or race behavior?
+- Does a command merely observe state or mutate it?
+- Does a memory read access side-effecting MMIO?
+- Are addresses derived from symbols or hard-coded?
+- Does the script assume `-O0`, a frame pointer, or a particular ABI?
+- Does it halt execution and alter timing?
+- Is it idempotent after a partial failure?
 
-Prefer scripts that collect evidence rather than mutate firmware state. When mutation is necessary, make it explicit and reversible.
+Prefer evidence collection over mutation. When writes are necessary, make them explicit, bounded, and reversible.
 
 ## Embedded implications
-Scripts are valuable for board bring-up, repeated register checks, fault injection, memory-pattern tests, peripheral configuration validation, and automated regression reproduction. They can turn a manual 20-step debugger procedure into a repeatable experiment.
-
-Hard-coded addresses become fragile across MCU variants and linker layouts. Prefer symbol-based access for firmware objects and documented register names/addresses for hardware. Scripts should fail loudly when expected symbols or memory regions are absent.
+Scripts are useful for board bring-up, register validation, memory tests, fault injection, repeated reproduction, and automated capture of CPU context. They can turn a long manual debugger procedure into a deterministic experiment.
 
 ### Firmware review angle
-Store important scripts with the firmware/tooling repository, record debugger/probe versions, and avoid hidden IDE state. A production incident should be reproducible by another engineer using documented artifacts.
+Keep important scripts under version control with the firmware/tooling. Record debugger and probe versions. Validate that the running image matches the expected symbol file before issuing address-sensitive commands.
 
 ## Edge cases and failure modes
 - **Wrong image:** symbols resolve to incorrect addresses.
-- **Side-effecting reads:** MMIO inspection changes peripheral state.
-- **Timing distortion:** repeated halts hide a race.
-- **Version drift:** debugger command semantics change.
-- **Unsafe writes:** a script can disable clocks, watchdogs, or protection accidentally.
+- **MMIO side effect:** inspection changes peripheral state.
+- **Timing distortion:** repeated halts hide races.
+- **Version drift:** debugger command behavior changes.
+- **Unsafe writes:** scripts can disable clocks, watchdogs, or protection.
 
 ## Example pattern
 ```text
-# Pseudocode for a debugger procedure
 load_symbols(exact_elf)
+assert_symbol("fault_record")
 read_register(PC)
 read_register(SP)
-dump_memory(stack_base, stack_size)
+dump_memory(fault_record, RECORD_SIZE)
 resolve_symbol(PC)
 ```
-The exact commands are debugger-specific; the important design is to establish binary identity, capture raw context, then symbolize it.
+The exact syntax varies by debugger; the design principle is to validate identity, capture raw state, then symbolize it.
 
 ## Verification / debugging
-Test scripts against known-good and intentionally-faulted images. Validate expected addresses, register values, and failure handling. Keep a machine-readable output mode when scripts feed CI or incident tooling.
+Test scripts on known-good and intentionally-faulted images. Check expected symbol addresses, output formats, error handling, and incompatible-image detection. For CI use, prefer machine-readable output and deterministic exit status.
 
-Staff-level questions:
-- What assumptions about ABI, symbols, and memory map are encoded?
-- Can the script detect an incompatible image?
-- What target state can it mutate?
-- Does automation preserve the timing characteristics relevant to the bug?
+Staff-level questions: What assumptions are encoded? Can the script detect a mismatched binary? What state can it mutate? Does automation preserve the timing conditions relevant to the defect?
 
 ## Staff-level takeaway
-Debugger scripts should make debugging **repeatable, reviewable, and evidence-driven**. Treat them as production-quality diagnostic tooling when they become part of bring-up, CI, or field-failure analysis.
+Debugger automation should make diagnosis **repeatable, reviewable, and evidence-driven**. Once it becomes part of bring-up or production incident response, treat it like production engineering tooling with versioning and tests.
 
 ## Related
 [[00_Chapter_Index]]
