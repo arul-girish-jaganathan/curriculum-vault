@@ -1,44 +1,24 @@
-# Linking overview
+# Linking Overview
 
-> Canonical C topic note — chapter 02.
+Linking combines object files and libraries, resolves symbols, applies relocations and produces an executable or another final image according to the target format and linker configuration.
 
-## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Linking overview**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+## Symbol resolution
+A function or object referenced by one translation unit may be defined in another. The linker matches compatible symbols according to the object format, visibility and linking rules. Multiple-definition and unresolved-symbol failures are often architectural signals about ownership or build composition.
 
-## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+## Relocation
+Object code can contain addresses that are not known until placement. The linker assigns final locations and applies relocation information. Embedded linker scripts can place code and data into flash, SRAM, tightly coupled memory, external memory or dedicated sections.
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+## Static versus dynamic context
+Bare-metal firmware usually uses statically linked images, while hosted systems may use dynamic linking. The exact model is platform-specific and should not be assumed from C itself.
 
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+## Embedded failure modes
+Incorrect linker symbols, section placement, memory-region definitions or startup assumptions can produce binaries that link successfully but fail at boot. Always inspect the linker map and verify section addresses against the MCU memory map.
 
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
-
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
-```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
-```
-
-## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
-
-## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+## Staff-level view
+Linking is where source-level ownership meets physical memory and ABI constraints. Treat linker scripts, startup objects and memory placement as version-controlled architecture artifacts, not build trivia.
 
 ## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+- [[08_Compiler_driver_stages]]
+- [[10_Static_vs_dynamic_libraries]]
+- [[82_C_Linkers_Symbols]]
+- [[81_C_Linked_Sections]]

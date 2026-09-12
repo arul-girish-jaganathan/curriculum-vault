@@ -1,44 +1,38 @@
-# Preprocessing phase
+# Preprocessing Phase
 
-> Canonical C topic note — chapter 02.
+The preprocessing phase transforms preprocessing tokens according to directives and macro rules before the compiler performs the later language translation work. It is a source-transformation stage, not a general-purpose C parser.
 
-## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Preprocessing phase**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+## Core operations
+Important mechanisms include macro replacement, file inclusion, conditional inclusion, pragma handling, predefined macros and diagnostic directives. The result is the input consumed by subsequent translation stages.
 
-## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+## Headers are textual inclusion
+A traditional `#include` effectively makes the included header's preprocessing content available in the including translation unit. It does not create a runtime module boundary. Include guards or equivalent mechanisms prevent repeated definitions within a translation unit, while dependency hygiene determines what an API actually exposes.
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+## Macro expansion
+Macro replacement is token-based. Function-like macros can evaluate arguments more than once, so expressions with side effects can produce surprising behavior. Parenthesization prevents many precedence errors but cannot make an inherently unsafe macro safe.
+
+## Conditional compilation
+`#if` configuration creates different source programs from the same repository. Therefore each supported configuration is a distinct build variant that may require compilation and test coverage.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+Board variants, feature switches, bootloader/application builds and debug/release configurations frequently depend on preprocessing. Excessive configuration can multiply the number of effective programs and make defects configuration-specific.
 
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+## Debugging
+When behavior differs between builds, inspect the preprocessed output and compiler command line. Confirm include search paths, macro definitions and language mode before investigating generated assembly.
 
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
+## Common failures
+- accidental macro collisions;
+- missing include guards;
+- configuration branches that are never compiled;
+- relying on include order for declarations;
+- mixing target and host headers;
+- hidden behavior controlled by build-system definitions.
 
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
-```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
-```
-
-## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
-
-## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+## Staff-level view
+Treat preprocessing as a program generator. Minimize uncontrolled configuration, make public interfaces explicit, and ensure every supported configuration is represented in CI or another reproducible validation mechanism.
 
 ## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+- [[03_Tokenization]]
+- [[06_Object_code_generation]]
+- [[19_C_Preprocessor]]
+- [[20_C_Macros]]

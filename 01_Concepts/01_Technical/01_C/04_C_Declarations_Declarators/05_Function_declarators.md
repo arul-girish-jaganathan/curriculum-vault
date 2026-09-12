@@ -1,44 +1,22 @@
 # Function declarators
 
-> Canonical C topic note — chapter 04.
+## Core idea
+A function declarator specifies a function's return type and parameter type structure. The parameter-list form matters: a prototype with explicit parameter types provides substantially stronger checking than an old-style declaration with an unspecified parameter list.
 
-## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Function declarators**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+## ABI boundary
+A function declaration is an ABI contract when the function crosses translation-unit, library, bootloader, plugin, or interrupt boundaries. Return type, parameter types, variadic status, calling convention extensions, and attributes can all affect generated calls.
 
-## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+## Embedded consequences
+Callback APIs, ISR registration, RTOS hooks, driver interfaces, and boot/runtime entry points depend on exact function types. A mismatched function-pointer type can compile with a cast yet fail at runtime because argument registers, stack layout, return registers, or preserved registers do not match the actual ABI.
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+## Failure modes
+- Calling through an incompatible function-pointer type.
+- Omitting prototypes and relying on implicit historical assumptions.
+- Assuming a cast makes an incompatible callback safe.
+- Mixing compiler calling-convention extensions without documenting them.
 
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
-
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
-
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
-```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
-```
-
-## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+## Verification
+Keep function prototypes in shared headers, enable incompatible-pointer-type warnings, inspect generated calls for critical boundaries, and validate vendor/RTOS callback signatures directly against their documented ABI.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
-
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+Function type compatibility is stronger than “the call looks right.” At a binary boundary, the declaration must match the actual calling convention.

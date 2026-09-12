@@ -1,44 +1,22 @@
-# Reserved identifiers
+# Reserved identifiers and namespace hazards
 
-> Canonical C topic note — chapter 03.
+## Core idea
+C reserves classes of identifier spellings for the implementation and standard library. Reserving names protects library and implementation evolution; application code that violates those reservations can lose portability or collide with future headers, builtins, or implementation details.
 
-## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Reserved identifiers**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+## What to watch
+Do not treat reservation as a cosmetic naming convention. The exact rule depends on where the identifier appears: file scope, external linkage, use in a standard header, or special implementation namespaces. A safe project convention should avoid implementation namespaces entirely unless a documented compiler extension requires them.
 
-## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+## Embedded consequences
+Vendor SDKs frequently expose implementation-specific macros, attributes, intrinsics, and linker symbols. Keep those names isolated behind project-owned wrappers so application code does not accidentally become dependent on a vendor namespace.
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+## Failure modes
+- A local macro collides with a standard-library macro or future header.
+- A global symbol collides with a runtime or startup symbol.
+- A third-party header changes behavior after a compiler/libc upgrade.
+- A supposedly private name becomes externally visible through the linker.
 
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
-
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
-
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
-```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
-```
-
-## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+## Verification
+Run builds with stricter warnings and multiple libc/toolchain versions where practical. Search for reserved-prefix patterns during code review and static analysis.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
-
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+Namespace hygiene is compatibility engineering. Reserve your own project namespace just as deliberately as you avoid the implementation's namespace.

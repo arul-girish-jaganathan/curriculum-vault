@@ -1,44 +1,22 @@
-# String literals
+# String literals and storage/concatenation rules
 
-> Canonical C topic note — chapter 03.
+## Core idea
+A string literal is a sequence of characters followed by a terminating null character. Adjacent string literals are concatenated during translation, while the resulting literal object has implementation-defined storage characteristics beyond the language guarantees that matter for modification and identity.
 
-## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **String literals**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+## Critical rule
+A string literal is not a writable character array. Attempting to modify its characters produces undefined behavior. In a firmware API, use `const char *` when passing a literal to a read-only consumer.
 
-## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+## Embedded consequences
+Literals normally consume image space and may be placed in read-only flash/ROM, but the exact placement and access mechanism depend on the implementation and memory model. Large diagnostic strings can materially affect firmware image size. Linker garbage collection and section placement can change whether unused strings remain in the image.
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+## Failure modes
+- Passing literals to APIs that write through `char *`.
+- Assuming two identical literals have distinct or identical addresses.
+- Forgetting the terminating null character when computing storage requirements.
+- Building RAM-heavy lookup tables from unnecessarily mutable character arrays.
 
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
-
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
-
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
-```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
-```
-
-## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+## Verification
+Inspect compiler diagnostics for incompatible qualifiers, use read-only API signatures, and inspect linker maps when flash/RAM usage matters.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
-
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+Treat literal mutability, storage placement, and encoding as explicit API and memory-budget decisions rather than incidental syntax.

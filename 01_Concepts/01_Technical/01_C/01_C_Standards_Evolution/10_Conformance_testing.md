@@ -1,44 +1,27 @@
-# Conformance testing
+# Conformance Testing
 
-> Canonical C topic note — chapter 01.
+Conformance testing asks whether a program, compiler configuration or implementation behaves according to the applicable specification. For C, this requires separating language conformance from platform behavior and product requirements.
 
-## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Conformance testing**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+## What to test
+A useful C conformance strategy includes syntax and semantic acceptance, required diagnostics, defined behavior, implementation-defined choices, library availability, integer and floating-point properties, and selected edge cases relevant to the supported profile.
 
-## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+## Embedded profile
+A bare-metal product should not be judged as if it were a hosted desktop application. Define the supported C profile first: standard revision, freestanding/hosted environment, compiler, ABI, library subset, permitted extensions and project coding rules.
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+## Compile-time probes
+Use `_Static_assert` and small compile probes to establish properties such as type sizes, alignment assumptions and feature availability. These checks turn hidden assumptions into build failures.
 
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+## Runtime and integration evidence
+Runtime tests should cover boundaries that the language alone cannot prove: startup behavior, interrupt interaction, DMA ownership, peripheral register semantics, timing and persistent data. Those are system-level contracts, not ISO C conformance claims.
 
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+## Evidence discipline
+A passing test proves the tested configuration and behavior; it does not prove universal portability. Record compiler version, flags, target, library, optimization level and relevant hardware conditions with the result.
 
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
-```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
-```
-
-## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
-
-## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+## Staff-level view
+Conformance is most valuable when it creates a reproducible contract. A small, maintained probe suite can prevent compiler upgrades and platform migrations from silently changing assumptions.
 
 ## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+- [[08_Implementation_defined_behavior]]
+- [[11_Choosing_a_language_baseline]]
+- [[39_C_Diagnostics_Static_Analysis]]
+- [[57_C_Analyzability_Conformance_Testability]]

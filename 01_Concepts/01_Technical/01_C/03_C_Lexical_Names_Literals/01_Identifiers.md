@@ -1,44 +1,22 @@
-# Identifiers
+# Identifiers and identifier formation
 
-> Canonical C topic note — chapter 03.
+## Core idea
+An identifier names a program entity such as an object, function, typedef name, structure/union/enum tag, or enumeration constant. Identifier spelling matters at translation time; what an identifier denotes depends on scope, namespace, linkage, and declaration context.
 
-## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Identifiers**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+## Lexical rule versus semantic rule
+First ask whether the character sequence is a valid identifier under the active C implementation and source character set. Then ask what declaration it refers to. A valid spelling can still be invalid in context because of scope, redeclaration constraints, or reserved-name rules.
 
-## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+## Embedded consequences
+Identifier names often become part of linker symbols, map files, debugger views, trace data, generated headers, and ABI-facing interfaces. Keep public symbols stable when binary compatibility matters. Do not assume the spelling used in C source is identical to the final symbol emitted by the toolchain; assembler/linker naming conventions can transform or decorate it.
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+## Common traps
+- Assuming all Unicode-looking names are portable across compilers.
+- Confusing an identifier with a string literal containing the same text.
+- Reusing a name across scopes and then debugging the wrong declaration.
+- Using implementation-reserved names for application APIs or macros.
 
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
-
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
-
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
-```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
-```
-
-## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+## Verification
+Use compiler diagnostics for redeclarations and scope errors, inspect preprocessor output when macros affect names, and inspect symbol tables/map files when an identifier crosses a binary boundary.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
-
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+Treat naming as part of interface design: lexical validity is only the first gate; namespace ownership, ABI exposure, generated-code stability, and portability determine whether a name is actually safe.

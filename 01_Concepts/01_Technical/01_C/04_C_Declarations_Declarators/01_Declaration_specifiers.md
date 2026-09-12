@@ -1,44 +1,22 @@
 # Declaration specifiers
 
-> Canonical C topic note — chapter 04.
+## Core idea
+Declaration specifiers describe major properties of a declaration: type information and, where applicable, storage-class, function, alignment, qualifier, or other standard specifiers. The declarator then determines the declared entity's shape.
 
-## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Declaration specifiers**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+## Reasoning model
+Do not read a declaration left-to-right as if it were prose. Separate the specifier sequence from the declarator. Then determine the base type and the entity described by the declarator, followed by scope, storage duration, linkage, and any constraints imposed by the declaration context.
 
-## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+## Embedded consequences
+Specifiers can alter object placement, mutability, access semantics, calling interfaces, and generated code. `static`, `extern`, `const`, `_Atomic`, alignment specifications, and function-related specifiers can become ABI or linker-visible decisions depending on context.
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+## Failure modes
+- Confusing storage class with storage duration.
+- Assuming `const` alone guarantees hardware read-only placement.
+- Combining specifiers that are individually valid but invalid together.
+- Treating compiler extensions as ISO C guarantees.
 
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
-
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
-
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
-```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
-```
-
-## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+## Verification
+Use compiler diagnostics, inspect generated symbols and map files, and compare declarations across translation units. For ABI-facing declarations, ensure every declaration is compatible and comes from a common header.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
-
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+A declaration is a contract. Review both its language legality and the concrete storage, linkage, ABI, and toolchain consequences on the target.

@@ -1,44 +1,34 @@
-# Implementation-defined behavior
+# Implementation-Defined Behavior
 
-> Canonical C topic note — chapter 01.
+Implementation-defined behavior is behavior for which the C implementation chooses one of multiple permitted possibilities and documents its choice. This is different from undefined behavior: the implementation is not free to do anything; it has a specified choice that should be documented.
 
-## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Implementation-defined behavior**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+## Why it matters
+Embedded portability frequently crosses implementation-defined boundaries: integer representations and widths, character signedness, right-shift behavior for negative values in relevant language rules, sizes and alignments of types, floating-point characteristics, and other implementation properties.
 
-## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+## Engineering rule
+Never infer an implementation-defined property from the CPU name alone. Establish it from authoritative compiler documentation, target ABI documentation, headers, or a small conformance probe.
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+## Example: `char` signedness
+Whether plain `char` behaves as signed or unsigned is an implementation choice. Code that stores a byte and later compares it with negative values can therefore change behavior across targets. Use `unsigned char` when the semantic object is raw byte data and document character-text semantics separately.
 
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+## Embedded consequences
+Implementation-defined choices affect serialization, register fields, checksum code, protocol parsing, persistent storage and ABI boundaries. A change of compiler or target can turn a latent assumption into a field defect without any source-level change.
 
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+## Verification pattern
+For each portability-sensitive property:
+1. identify the ISO rule;
+2. identify the implementation choice;
+3. record the chosen value for the supported toolchain;
+4. add a compile-time assertion or build-time check when practical;
+5. test the boundary behavior.
 
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
+## Common misconception
+“Implementation-defined means non-portable and therefore bad” is too simplistic. A product can intentionally depend on an implementation-defined property if the supported platform is controlled and the dependency is documented and verified.
 
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
-```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
-```
-
-## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
-
-## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+## Staff-level view
+Treat implementation-defined behavior as an explicit architecture dependency. The problem is not the dependency itself; the problem is an undocumented dependency that silently changes when the toolchain or target changes.
 
 ## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+- [[07_Hosted_vs_freestanding]]
+- [[09_Undefined_behavior_and_portability]]
+- [[11_Choosing_a_language_baseline]]

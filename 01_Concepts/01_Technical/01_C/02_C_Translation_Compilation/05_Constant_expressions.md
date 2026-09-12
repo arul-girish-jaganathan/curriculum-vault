@@ -1,44 +1,24 @@
-# Constant expressions
+# Constant Expressions
 
-> Canonical C topic note — chapter 02.
+A constant expression is an expression restricted by C's rules so that its value can be determined in contexts requiring compile-time evaluation. Constant-expression rules are stricter than the informal idea that “the compiler can probably calculate it.”
 
-## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Constant expressions**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+## Where they matter
+They appear in array bounds in contexts where constant expressions are required, enumerator values, bit-field widths, `_Static_assert` conditions, initializers for objects with static storage where applicable, and other compile-time constraints.
 
-## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+## Embedded value
+Compile-time constants can move validation from runtime to build time. Register masks, buffer sizes, protocol field widths and table dimensions are safer when invalid relationships become compilation failures.
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+## Do not confuse with `const`
+A `const` object is an object that cannot be modified through that lvalue; it is not automatically an integer constant expression. Storage, linkage and addressability still matter. Similarly, compiler constant folding is an optimization and does not redefine the language's constant-expression rules.
 
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+## Debugging
+When an expression is rejected in a constant-expression context, identify the exact language category required and inspect every operand. A value being known to a human or folded by an optimizer does not mean the syntax satisfies the required constraint.
 
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
-
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
-```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
-```
-
-## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
-
-## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+## Staff-level view
+Prefer compile-time invariants for properties that are structural: array capacity, configuration ranges, type sizes and protocol constants. Runtime checks remain necessary for values arriving from hardware, communication channels or external configuration.
 
 ## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+- [[04_Parsing_and_semantic_analysis]]
+- [[08_Implementation_defined_behavior]]
+- [[64_C_Designated_Initialization]]
+- [[56_C23_Bit_Utilities_Checked_Arithmetic]]

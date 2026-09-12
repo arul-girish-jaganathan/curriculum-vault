@@ -1,44 +1,19 @@
 # Arrays in declarators
 
-> Canonical C topic note — chapter 04.
+## Core idea
+An array declarator specifies an array type. In declarations, the bound contributes to the type and object size where the language context requires it; in function parameter declarations, array syntax is adjusted to pointer form rather than declaring an array parameter object.
 
-## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Arrays in declarators**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+## Embedded consequences
+Array bounds directly affect RAM/flash layout, stack use, DMA buffer sizing, and ABI-facing data structures. Variable-length arrays add runtime sizing and stack implications and should be reviewed separately from fixed-size objects.
 
-## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+## Common traps
+- Confusing an array object with a pointer to its first element.
+- Forgetting parameter adjustment in function declarations.
+- Using an array bound derived from an unchecked runtime value.
+- Assuming `sizeof` on a parameter written with array syntax yields the original array size.
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
-
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
-
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
-
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
-```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
-```
-
-## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+## Verification
+Use `sizeof` carefully at the object boundary, enable warnings for suspicious array parameters, and inspect stack usage for automatic arrays. For externally visible structures, verify layout with static assertions and target ABI documentation.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
-
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+Array syntax is both type information and a resource decision. Review bounds, lifetime, parameter adjustment, and placement together.

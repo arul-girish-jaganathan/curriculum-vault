@@ -1,44 +1,24 @@
-# Standards watch
+# Standards Watch
 
-> Canonical C topic note — chapter 01.
+Standards watch is the practice of tracking language and library evolution without allowing unreviewed proposals or compiler experiments to become accidental product requirements.
 
-## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Standards watch**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+## What to watch
+Track published ISO C revisions, corrigenda/technical corrections, WG14 work, compiler support, standard-library implementation status, static-analysis support and relevant safety/security guidance. Keep published standards separate from drafts, proposals and vendor extensions.
 
-## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+## Evidence discipline
+A proposal is not a language guarantee. A compiler extension is not ISO C. A feature implemented by one compiler is not automatically portable. Every note in this knowledge base should label these distinctions explicitly.
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+## Embedded impact
+Standards evolution can affect compiler diagnostics, integer facilities, initialization, type-system expressiveness, preprocessing, attributes, bit manipulation, checked arithmetic and library interfaces. Adoption must also consider linker/debugger support, certification evidence, tool qualification and long-term maintenance.
 
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+## Practical workflow
+Review standards developments periodically, classify them as relevant/not relevant, prototype useful features on host builds, check target compiler support, assess safety/security impact, and only then propose a product baseline change.
 
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
-
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
-```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
-```
-
-## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
-
-## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+## Staff-level view
+A standards watch should reduce surprise rather than generate churn. The deliverable is a controlled roadmap: what is available now, what is experimental, what is useful later, and what the organization deliberately will not adopt.
 
 ## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+- [[05_C23_modernization]]
+- [[11_Choosing_a_language_baseline]]
+- [[51_C_C23_Modernization]]
+- [[60_C_Future_Standards_Watch]]

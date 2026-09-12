@@ -1,44 +1,33 @@
-# Undefined behavior and portability
+# Undefined Behavior and Portability
 
-> Canonical C topic note — chapter 01.
+Undefined behavior (UB) occurs when the C standard imposes no requirements on the program's behavior for a particular execution. Once UB is reached, reasoning from the apparent source-level operation is no longer valid. This is why compiler optimization can expose bugs that appeared stable at `-O0`.
 
-## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Undefined behavior and portability**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+## Typical embedded sources
+Common examples include signed integer overflow, invalid shifts, out-of-bounds access, use-after-lifetime, invalid pointer arithmetic, incompatible aliasing assumptions, and incorrect format or variadic arguments. Some failures corrupt data; others alter control flow or disappear under a debugger.
 
-## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+## Three different categories
+Do not mix UB with unspecified behavior or implementation-defined behavior.
+- **Undefined:** the standard imposes no requirements.
+- **Unspecified:** one of multiple permitted behaviors may occur and the implementation need not document which.
+- **Implementation-defined:** the implementation chooses and documents a permitted behavior.
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+## Why optimization changes symptoms
+The compiler is allowed to assume that a conforming program does not execute undefined operations. It can therefore simplify control flow or eliminate checks that would only matter after UB. The resulting binary is not “random”; it is the consequence of compiling outside the language's defined semantic contract.
 
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+## Embedded debugging
+When a failure disappears with optimization disabled, do not conclude that the optimizer is broken. First investigate UB, data races, lifetime errors, uninitialized data, stack corruption and timing-sensitive hardware interactions. Compare optimized assembly only after the source-level contract is understood.
 
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+## Defensive techniques
+Use compiler warnings, static analysis, sanitizers on host builds, assertions, fuzzing for parsers, bounded APIs, explicit integer types, and tests around boundary values. Avoid relying on a single runtime symptom as proof of correctness.
 
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
+## Portability
+A program can be portable across multiple implementations only to the extent that it stays within defined language behavior and controls its implementation dependencies. Portability is a property of assumptions and contracts, not just source syntax.
 
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
-```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
-```
-
-## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
-
-## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+## Staff-level view
+The key question during a root-cause review is: “What semantic contract did the code violate, and why did our engineering process fail to prevent it?” Fixing the immediate line is necessary; eliminating the class of defect is the Staff-level outcome.
 
 ## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+- [[08_Implementation_defined_behavior]]
+- [[29_C_Behavior_Categories]]
+- [[39_C_Diagnostics_Static_Analysis]]
+- [[40_C_Sanitizers_Fuzzing]]

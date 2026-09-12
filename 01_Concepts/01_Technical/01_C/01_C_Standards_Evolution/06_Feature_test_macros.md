@@ -1,44 +1,32 @@
-# Feature-test macros
+# Feature-Test Macros
 
-> Canonical C topic note — chapter 01.
+Feature-test macros are preprocessor controls used by implementations and libraries to select declarations, interfaces or extensions available under a requested environment. They are implementation/library mechanisms, not a universal ISO C language feature-selection system.
 
-## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Feature-test macros**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+## Why they matter
+An embedded build may combine a language standard mode with a vendor libc, POSIX-like layer, RTOS headers and compiler extensions. A macro can change which declarations are visible or which API variant is selected. That makes build configuration part of the effective source interface.
 
-## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+## Critical distinction
+Do not confuse:
+- the C language standard version selected by the compiler;
+- implementation-defined feature macros supplied by the compiler;
+- library/platform feature-test macros;
+- project-defined configuration macros.
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+Each has a different authority and compatibility model.
 
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+## Good practice
+Centralize platform configuration where practical, document required feature macros, and avoid defining implementation-owned macros casually. If a header's API depends on a macro, make that dependency explicit in the build contract.
 
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+## Failure modes
+Changing include order or compiler flags can expose a different declaration set. A macro mismatch can produce missing prototypes, incompatible declarations, or silently different APIs. In cross-compilation, the host headers and target headers must never be treated as interchangeable.
 
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
+## Verification
+Capture the compiler command line and preprocess representative translation units with `-E` or the toolchain equivalent. Inspect the resulting declarations when diagnosing configuration-dependent behavior.
 
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
-```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
-```
-
-## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
-
-## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+## Staff-level view
+Configuration is code. Reproducible builds require feature-selection inputs to be versioned, reviewable and testable rather than hidden in developer-machine defaults.
 
 ## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+- [[05_C23_modernization]]
+- [[07_Hosted_vs_freestanding]]
+- [[38_C_Build_Toolchain]]

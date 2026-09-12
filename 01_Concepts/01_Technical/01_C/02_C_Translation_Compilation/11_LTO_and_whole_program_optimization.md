@@ -1,44 +1,24 @@
-# LTO and whole-program optimization
+# LTO and Whole-Program Optimization
 
-> Canonical C topic note — chapter 02.
+Link-time optimization (LTO) allows the compiler to retain or reconstruct enough intermediate information across translation-unit boundaries for broader optimization. It changes what the compiler can see; it does not change the C language contract.
 
-## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **LTO and whole-program optimization**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+## Why LTO matters
+Without LTO, many compiler decisions are constrained by the current translation unit. With LTO, the implementation may inline functions across files, remove unreachable code, propagate constants and improve interprocedural analysis.
 
-## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+## Embedded benefits
+LTO can reduce flash and improve performance, especially in small utility-heavy firmware. It can also expose stack and timing changes because inlining and code layout change. Therefore binary size and timing must be measured rather than assumed.
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+## Interaction with UB
+Optimization assumes the program satisfies the language rules. LTO can make an existing undefined-behavior bug more visible because more information is available to the optimizer. A failure that appears only under LTO is a reason to investigate the program contract, not automatically to disable LTO.
 
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+## Debugging
+Compare builds with and without LTO, inspect map files and disassembly, and identify the smallest source-level assumption that differs. Preserve the exact production compiler and linker configuration in the investigation.
 
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
-
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
-```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
-```
-
-## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
-
-## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+## Staff-level view
+LTO is an architecture-level build optimization because it changes code generation globally. Establish reproducible build inputs and regression budgets for image size, timing, stack and debugging quality before enabling it in a safety- or timing-critical product.
 
 ## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+- [[06_Object_code_generation]]
+- [[07_Assembly_inspection]]
+- [[12_Reproducible_builds]]
+- [[37_C_Compiler_Optimization]]

@@ -1,44 +1,24 @@
-# Assembly inspection
+# Assembly Inspection
 
-> Canonical C topic note — chapter 02.
+Assembly inspection is a diagnostic and verification technique: it reveals how one compiler configuration translated source into target instructions. It is not a substitute for the C language specification.
 
-## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Assembly inspection**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+## What to inspect
+For embedded firmware, inspect call sequences, register allocation, loads/stores, branches, function inlining, stack frames, volatile accesses, barriers, atomic instructions and constant placement when those details matter.
 
-## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+## Useful artifacts
+Compiler assembly output, object disassembly, linker map files and symbol tables together provide a much better picture than a single source-level debugger view. Compare optimized and unoptimized builds when diagnosing optimization-sensitive defects.
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+## Common trap
+Seeing a particular instruction sequence does not establish that C guarantees that sequence. A compiler can change it in another optimization build while preserving required semantics. Conversely, if the source has UB, an apparently sensible instruction sequence is not evidence that the program is valid.
 
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+## Embedded workflow
+Start from a precise question: “Is this register access emitted?”, “How large is this stack frame?”, or “Did the compiler insert the expected atomic primitive?” Generate the artifact with the exact production flags, then compare against the intended contract.
 
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
-
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
-```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
-```
-
-## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
-
-## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+## Staff-level view
+Assembly inspection is most valuable when tied to measurable constraints and a documented compiler/ABI contract. Use it to prove target-specific properties, not to replace portable reasoning with folklore.
 
 ## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+- [[06_Object_code_generation]]
+- [[08_Compiler_driver_stages]]
+- [[36_C_Linkage_ABI]]
+- [[87_C_Performance_Measurement]]
