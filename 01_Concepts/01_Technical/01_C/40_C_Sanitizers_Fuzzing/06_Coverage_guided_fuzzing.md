@@ -3,41 +3,25 @@
 > Canonical C topic note — chapter 40.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Coverage-guided fuzzing**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+Coverage-guided fuzzing generates and mutates inputs while retaining cases that exercise new program paths or coverage. It is effective for finding crashes, assertion failures, memory errors, parser defects, and unexpected state transitions.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
-
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+A fuzz target should accept a bounded input and execute deterministic logic. Instrumentation measures coverage; mutations evolve the corpus toward unexplored behavior. Sanitizers make otherwise silent memory/UB defects observable.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
-
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+Protocol decoders, configuration parsers, image/data formats, command interpreters, and boot/update metadata are excellent targets. Hardware access should be isolated behind deterministic interfaces so the core logic can run on a host.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
-```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
-```
+- Fuzzing a huge wrapper instead of the security-critical parser.
+- Nondeterministic targets reducing coverage quality.
+- No input-size bound.
+- Ignoring hangs, resource exhaustion, and logical assertion failures.
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Run fuzzing with ASan/UBSan where practical. Preserve crashing inputs, minimize them, and add confirmed regressions to the permanent corpus. Track coverage trends and unique bug signatures.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+Good fuzzing is an architecture exercise: isolate a deterministic attack surface, instrument it, define failure oracles, and feed discoveries back into regression testing.
 
 ## Related
 [[00_Chapter_Index]]
