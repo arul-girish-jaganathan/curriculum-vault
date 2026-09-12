@@ -3,41 +3,35 @@
 > Canonical C topic note — chapter 37.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Loop optimization**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+Loop optimization transforms repeated computation while preserving required C behavior. Common transformations include invariant-code motion, induction-variable simplification, unrolling, fusion, fission, interchange, unswitching, vectorization, and strength reduction.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+Loops are attractive because small improvements multiply by iteration count. The compiler needs proof that transformations preserve dependencies, overflow semantics, aliasing rules, volatile accesses, and observable effects.
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
-
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
-
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
-
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
+for (size_t i = 0; i < n; ++i)
+    dst[i] = src[i] + bias;
 ```
 
+A compiler may hoist `bias`, choose wider registers, unroll iterations, or vectorize if aliasing and target constraints permit. Signed overflow, pointer provenance/lifetime rules, and possible overlap can block transformations or make incorrect source code appear to work only at low optimization.
+
+## Embedded implications
+Loop optimization directly affects CPU cycles, flash size, instruction-cache behavior, memory bandwidth, and energy. Unrolling can reduce branch overhead but increase code size. Vectorization may be irrelevant or unavailable on small MCUs but important on DSP/SIMD-capable cores.
+
+For real-time firmware, average loop speed is insufficient. Consider worst-case iterations, interrupt interference, cache state, memory wait states, and bounds checks. Avoid hand-unrolling until measurements show a need.
+
+## Edge cases and failure modes
+- Assuming `n` is nonzero or within a safe range without a contract.
+- Violating aliasing assumptions between `src` and `dst`.
+- Using signed arithmetic where overflow is possible.
+- Expecting a volatile loop to be freely optimized.
+- Creating huge unrolled code that increases flash or cache misses.
+
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Use optimization reports and compare generated assembly. Benchmark representative sizes and boundary cases on the target. Use sanitizers and static analysis on host builds to expose overflow, bounds, and aliasing defects before interpreting optimizer behavior.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+Optimize loops by identifying the dominant resource and preserving proof obligations. A fast loop that depends on UB, accidental non-aliasing, or a particular compiler version is not a robust optimization.
 
 ## Related
 [[00_Chapter_Index]]
