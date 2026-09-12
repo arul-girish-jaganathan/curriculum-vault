@@ -22,3 +22,8 @@ A deep-reference chapter in the C language knowledge base. Use it to understand 
 - What depends on the implementation, ABI, compiler, libc, or target?
 - What failure mode would appear on an embedded system?
 - What test or inspection would prove the behavior?
+
+## Chapter completion record
+- Chapter 42 contains all 12 indexed topic notes.
+- The topic notes were audited against the canonical chapter-note structure: definition, language/compiler mechanism, embedded implications, edge cases/failure modes, example pattern, verification/debugging, and Staff-level takeaway.
+- Reference baseline: `01_C/13_C_Pointers/05_void_pointers.md`.
