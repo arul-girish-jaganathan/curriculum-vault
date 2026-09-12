@@ -1,62 +1,60 @@
 # Resource rollback
 
-> Canonical C topic note — Chapter 42. Rollback restores externally visible state when a multi-step operation cannot complete. Cleanup releases resources; rollback additionally undoes state changes already committed to hardware or persistent data.
+> Canonical C topic note — Chapter 42. Resource rollback returns a partially completed operation to a known safe state when forward progress cannot continue.
 
 ## Definition
-If an operation changes state through steps A, B, and C and C fails, rollback attempts to return the system to a defined prior state. Full rollback is not always possible, so the contract must distinguish atomic, partially applied, and compensating behavior.
+Rollback differs from simple cleanup: cleanup releases resources, while rollback restores externally visible state. Examples include undoing a configuration change, returning a buffer to a pool, reversing a reservation, or restoring a peripheral to a safe state.
 
 ## Mechanism and language rules
-C provides no transactional primitive for arbitrary resources. The implementation must record enough state to undo completed steps and execute compensating operations in reverse dependency order.
+Rollback is usually implemented by recording which forward steps succeeded and undoing them in reverse dependency order. Not every operation is reversible; hardware side effects and transmitted data may be irreversible.
 
 ### What to reason about
-- Which state changes are reversible?
-- What information is needed to restore the previous state?
-- Can rollback itself fail?
-- Is the prior state externally observable?
-- Is the operation idempotent?
-- Does persistence require journaling or commit markers?
+- Which actions are reversible?
+- Is rollback order the exact reverse of acquisition/dependency order?
+- Can an undo action itself fail?
+- Is the operation atomic from the caller's perspective?
+- What state is externally visible during partial execution?
+- Is retry after rollback safe?
 
-A robust design defines an explicit state machine rather than scattering ad-hoc undo operations across error branches.
+A C function should not claim transactional semantics unless the implementation can actually restore the promised state.
 
 ## Embedded implications
-Rollback can apply to peripheral configuration, power sequencing, communication sessions, firmware updates, and configuration storage. Hardware may have irreversible actions, such as triggering an external actuator or consuming a one-time command; these cannot be rolled back and require a different failure contract.
+Peripheral configuration, clock trees, DMA channels, flash operations, and communication transactions often have irreversible stages. Firmware should distinguish “rollback succeeded,” “rollback partially succeeded,” and “system must enter safe/reset state.”
 
 ### Firmware review angle
-For nonvolatile configuration, use transactional records, versioning, CRC, and commit markers rather than assuming a failed write can simply be undone. For hardware sequences, identify which transitions are irreversible before designing recovery.
+Define transactional boundaries explicitly. For non-reversible hardware actions, prefer a state machine that moves into a controlled degraded state instead of pretending a full rollback exists.
 
 ## Edge cases and failure modes
-- Rollback uses stale state and restores the wrong configuration.
-- A rollback step fails, leaving a partially restored system.
-- Concurrent actors modify state during the transaction.
-- Power loss occurs during rollback.
-- An irreversible action was performed before failure.
+- Undo performed in the wrong order.
+- Rollback assumes a resource that has already failed.
+- Hardware side effect cannot be undone.
+- Cleanup succeeds but externally visible state remains changed.
+- Retry duplicates an operation that was only partially rolled back.
 
 ## Example pattern
 ```c
-typedef enum { ST_IDLE, ST_PREPARED, ST_ACTIVE } state_t;
-
-status_t activate(void)
+status_t configure(device_t *d)
 {
-    if (prepare_hw() != STATUS_OK) return STATUS_IO;
-    if (start_hw() != STATUS_OK) {
-        (void)restore_hw();
-        return STATUS_IO;
+    status_t st = set_mode(d, MODE_A);
+    if (st != STATUS_OK) return st;
+
+    st = enable_feature(d);
+    if (st != STATUS_OK) {
+        (void)set_mode(d, MODE_SAFE);
+        return st;
     }
     return STATUS_OK;
 }
 ```
-The real contract must define whether `restore_hw()` can fail and what state remains if it does.
+The example is true rollback only if `MODE_SAFE` is a documented valid recovery state.
 
 ## Verification / debugging
-Inject failures after each state transition and test rollback under reset/power interruption where applicable. Verify idempotence and that concurrent access is blocked or coordinated during the transaction.
+Inject failure after each forward step. Verify both software state and actual hardware registers/outputs. Test rollback failure itself and power interruption at each irreversible boundary.
 
-Staff-level questions:
-- Is rollback actually possible for every side effect?
-- What is the defined state after rollback failure?
-- Would a state machine or journal be clearer?
+Staff-level questions: What is the transaction boundary? Which effects are irreversible? What is the safe state if rollback fails? Is reset the more reliable recovery mechanism?
 
 ## Staff-level takeaway
-Rollback is a **state-restoration contract**, not merely cleanup. Explicitly model reversible and irreversible effects and define a safe degraded state when complete restoration is impossible.
+Rollback is a **state-transition contract**. Only promise reversibility that can be demonstrated, and design an explicit safe outcome for the point where rollback is impossible.
 
 ## Related
 [[00_Chapter_Index]]
