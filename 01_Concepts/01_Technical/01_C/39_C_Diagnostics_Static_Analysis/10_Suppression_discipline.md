@@ -3,41 +3,25 @@
 > Canonical C topic note — chapter 39.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Suppression discipline**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+Suppression discipline is the controlled process for excluding a known, justified analyzer or compiler finding without hiding unrelated defects.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
-
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+A good suppression identifies rule, location/scope, reason, evidence, owner, and review condition. Prefer source-local or module-local suppression over global disablement. If the tool supports baselines, use them for legacy debt rather than making every finding permanently invisible.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
-
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+Suppression is particularly sensitive in safety/security code. A deviation around a register access may be valid, while the same broad rule suppression could hide unsafe pointer arithmetic elsewhere.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
-```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
-```
+- File-wide disablement for one line.
+- No rationale or expiry.
+- Suppressions copied after refactoring to unrelated code.
+- Treating tool limitations as proof of safety.
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Review suppressions as code. CI should detect unexplained additions, stale suppressions, and policy violations. Re-run analysis after tool upgrades to see whether old suppressions remain necessary.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+Every suppression spends part of the project's defect-detection budget. Spend it narrowly and record why.
 
 ## Related
 [[00_Chapter_Index]]
