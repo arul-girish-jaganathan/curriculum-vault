@@ -3,41 +3,55 @@
 > Canonical C topic note — chapter 35.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Noreturn**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+A non-returning function is a function whose execution does not return to its caller. C23 provides the standard `[[noreturn]]` attribute. Earlier C versions commonly rely on implementation extensions such as compiler-specific `noreturn` attributes or `<stdnoreturn.h>` conventions where available.
+
+The attribute is a semantic promise to the compiler and a documentation contract for reviewers; it is not an instruction that magically prevents a function from returning.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+A typical C23 declaration is:
+```c
+[[noreturn]] void panic(const char *reason);
+```
+A correctly implemented non-returning function normally loops forever, terminates the process, transfers control to a reset/fault mechanism, or otherwise never reaches its caller.
+
+The optimizer can exploit the contract. If a function is declared non-returning but actually returns, behavior is not something a program should rely on; implementations may diagnose violations and optimize surrounding control flow based on the promise. Declaration consistency across translation units is therefore critical.
 
 ### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+- The attribute describes control-flow behavior, not error severity.
+- Verify that every reachable path truly does not return.
+- Keep declarations consistent between headers and definitions.
+- Distinguish standard C23 syntax from GCC/Clang/MSVC or RTOS-specific extensions.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+Non-returning functions are common for `panic`, watchdog failure, fatal assertion handlers, bootloader handoff, and unrecoverable hardware faults. Marking them correctly can eliminate dead paths and improve diagnostics while preventing misleading compiler warnings.
+
+A firmware panic routine may disable interrupts, capture registers, persist a compact crash record, kick or deliberately expire the watchdog, and enter a reset loop. These operations must be designed for the execution context.
 
 ### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+Check startup/fault paths under optimization. Inspect generated control flow when a compiler believes a call cannot return. Ensure watchdog servicing, debug halts, and production reset behavior are intentional rather than accidental.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
+Do not mark a function `noreturn` merely because it normally fails. A function that can return on one error path must not be declared non-returning. Avoid placing cleanup after an unconditional non-returning call unless the design deliberately changes that contract.
 
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
+Cross-module declaration mismatches are especially dangerous because the compiler may optimize each translation unit under a different assumption.
 
 ## Example pattern
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
+[[noreturn]] static void fatal_error(uint32_t code)
 {
-    return x;
+    record_fault(code);
+    system_reset();
+    for (;;) {
+        /* Defensive fallback if reset unexpectedly returns. */
+    }
 }
 ```
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Compile with aggressive warnings and inspect control-flow diagnostics. Unit-test fatal handlers through an injectable backend rather than trying to return from them. On target, verify the actual reset/fault path and inspect disassembly around callers when optimizer behavior matters.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+`noreturn` is a control-flow contract. Use it only when the architecture truly guarantees non-return, because compilers can legitimately use the contract to transform code around the call.
 
 ## Related
 [[00_Chapter_Index]]
