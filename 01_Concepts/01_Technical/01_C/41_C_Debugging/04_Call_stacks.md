@@ -1,69 +1,57 @@
 # Call stacks
 
-> Canonical C topic note — Chapter 41. A call stack is a runtime/ABI mechanism used to represent active calls; the familiar debugger call-stack view is reconstructed from machine state and unwind/debug metadata.
+> Canonical C topic note — Chapter 41. A call stack is a runtime representation of active call frames, but its exact layout is defined by the ABI, compiler, architecture, and runtime—not by ISO C.
 
 ## Definition
-A call stack records enough execution state for active function calls to return and preserve required local state. ISO C specifies function-call semantics but does not require a stack, frame pointer, debugger, or particular ABI. Most embedded ABIs implement calls using a stack plus registers, but optimized code may omit traditional stack frames.
+A call stack records information needed to execute nested calls, commonly including return addresses, saved registers, parameters, local storage, and alignment padding. A debugger reconstructs a call chain using stack memory, registers, symbols, and unwind information.
+
+The C concept of function calls must be separated from a particular frame layout. Optimizing compilers may omit frame pointers, inline calls, use tail calls, reuse stack slots, or keep values in registers.
 
 ## Mechanism and language rules
-A typical call sequence saves a return address, establishes any required frame state, preserves callee-saved registers, allocates local storage, and passes arguments according to the ABI. A return reverses the required parts. The exact sequence is target-specific.
-
-A debugger reconstructs frames using frame pointers, unwind tables, prologue analysis, debug metadata, and architecture rules. Tail-call optimization can eliminate a frame. Inlining can eliminate a call boundary entirely. Interrupt entry may add hardware-created exception frames that are not ordinary C call frames.
+At a call, the ABI determines how arguments and return values are passed and which registers/callee-saved state must be preserved. The callee may allocate a frame and save required state. On return, the caller resumes at the saved return location.
 
 ### What to reason about
-- Which registers are caller- vs callee-saved?
-- Where are return address and arguments stored?
+- What does the target ABI define for SP, return address, arguments, and callee-saved registers?
 - Is a frame pointer present?
-- Are stack alignment rules satisfied?
-- Did stack corruption destroy the unwind chain?
-- Are you looking at a task stack, ISR stack, exception stack, or startup stack?
+- Has the compiler performed inlining or tail-call optimization?
+- Is stack alignment maintained at every call boundary?
+- Could stack corruption make unwinding unreliable?
+- Are interrupt/exception frames interleaved with ordinary C frames?
+
+A debugger backtrace is an inference. Its quality depends on valid stack state and usable unwind/debug metadata.
 
 ## Embedded implications
-Stack depth directly affects RAM sizing. Nested interrupts, RTOS tasks, library calls, recursion, large locals, and compiler-generated temporaries can all consume stack. A stack overflow may corrupt adjacent state before any obvious fault occurs.
+MCUs often have small stacks, and an interrupt can consume additional stack on top of a task's frame. Nested exceptions can create hardware-defined exception frames. RTOS context switches replace the active task stack and may require RTOS-aware unwinding.
 
-Fault handlers often run with a hardware exception frame plus software-saved registers. Correct post-mortem analysis therefore requires knowledge of the MCU exception model and ABI, not just the C source.
+Stack overflow can corrupt return addresses, saved registers, adjacent task stacks, or global data. Watermarks, guard regions, MPU protection, and high-water measurements are useful defenses.
 
 ### Firmware review angle
-Measure worst-case stack depth for each task and interrupt nesting configuration. Do not size from the deepest observed debugger call stack alone. Debug builds can have larger frames and different inlining than production.
+Treat worst-case call depth, ISR nesting, compiler-generated spills, library calls, and fault-handler paths as part of the stack budget. Do not estimate stack usage from source nesting alone.
 
 ## Edge cases and failure modes
-- **Corrupt backtrace:** stack overwrite, invalid frame pointer, missing unwind data, or exception-frame confusion.
-- **Missing function:** inlining or tail-call optimization removed the expected frame.
-- **Impossible locals:** optimized variables may not have stable stack locations.
-- **Stack/heap collision:** a growing stack can overwrite dynamically allocated memory.
-- **ISR nesting:** an apparently shallow C call chain can sit on top of several nested hardware frames.
+- **Corrupt backtrace:** stack or return-address corruption.
+- **Missing frame:** inlining or tail-call optimization.
+- **Impossible locals:** optimized stack-slot reuse or register allocation.
+- **Fault handler confusion:** hardware exception frame interpreted as a normal C frame.
+- **RTOS context mismatch:** debugger assumes the wrong active task.
 
 ## Example pattern
 ```c
-static void leaf(uint32_t x)
-{
-    volatile uint32_t scratch = x;
-    (void)scratch;
-}
-
-static void worker(uint32_t x)
-{
-    leaf(x + 1U);
-}
-
-void service(void)
-{
-    worker(10U);
-}
+static int leaf(int x) { return x + 1; }
+static int middle(int x) { return leaf(x) * 2; }
+static int top(int x) { return middle(x) + 3; }
 ```
-The visible frame sequence depends on optimization. `leaf()` may be inlined, and `scratch` may be eliminated unless its volatile access makes it observable.
+At low optimization, three source-level frames may appear. At higher optimization, one or more calls can be inlined, changing the physical stack while preserving the C result.
 
 ## Verification / debugging
-Capture the program counter, stack pointer, link/return register, fault status, and relevant exception-frame registers during a fault. Validate the stack range and sentinel/high-water mark. Compare debugger unwinding with raw memory and disassembly when the backtrace is suspicious.
+Capture SP, PC, link/return register, status register, and the raw stack before relying on a symbolic backtrace. Compare the observed frame shape with the target ABI and exception-entry rules. Use compiler-generated stack-usage reports where available.
 
-Staff-level questions:
-- What is the ABI-defined call/return convention?
-- What is the measured and statically bounded worst-case stack use?
-- Could an interrupt or RTOS context switch change the stack being inspected?
-- Is the unwind trustworthy, or merely plausible?
+For suspected stack overflow, fill unused stack with a pattern and inspect the high-water mark after worst-case nested execution. Combine this with MPU/guard checks where supported.
+
+Staff-level questions: What is the worst-case frame depth? What happens when an interrupt arrives at maximum depth? Can the fault handler itself run safely on the remaining stack?
 
 ## Staff-level takeaway
-A call stack is an **ABI/runtime structure**, while a debugger backtrace is an interpretation of that structure. For embedded reliability, reason from raw stack/register state and ABI rules, then use the symbolic backtrace as a convenient reconstruction.
+A call stack is an **ABI-level data structure**, not merely a list of C functions. Debug it from raw machine state upward, and budget stack from generated code plus asynchronous execution, not source appearance alone.
 
 ## Related
 [[00_Chapter_Index]]
