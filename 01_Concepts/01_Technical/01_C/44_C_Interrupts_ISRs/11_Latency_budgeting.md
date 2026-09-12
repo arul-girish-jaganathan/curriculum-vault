@@ -1,43 +1,50 @@
 # Latency budgeting
 
-> Canonical C topic note — chapter 44.
+> Canonical C topic note — Chapter 44. Interrupt latency is the time from an interrupt-causing event to the required service point. Correct budgeting uses worst-case bounds, not average ISR execution time.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Latency budgeting**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+A latency budget decomposes a deadline into interrupt recognition, hardware entry, masking delays, higher-priority work, handler execution, deferred processing, and required peripheral response. ISO C does not define any of these timings.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+Compiler-generated instructions, memory accesses, cache/flash wait states, branches, and function calls contribute to execution time. C semantics permit transformations that preserve observable behavior, so timing must be measured on the actual compiler/target configuration.
 
 ### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+- Maximum interrupt-disabled interval.
+- Higher-priority interrupt interference.
+- Worst-case ISR path.
+- Peripheral synchronization/acknowledgement latency.
+- Deferred queue/scheduler delay.
+- Measurement uncertainty.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+Missing a deadline can cause data loss, control instability, FIFO overflow, or safety failure. Budgeting must include bursts and nesting, not just nominal interrupt rates.
 
 ### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+Write a latency budget with explicit assumptions and margin. Re-measure after compiler, clock, flash wait-state, RTOS, or driver changes. GPIO timestamps and hardware trace are often more trustworthy than debugger single-stepping.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
+- Average timing hides rare worst-case paths.
+- A logging statement changes the timing under test.
+- Interrupt masking in unrelated code consumes the budget.
+- Queue backlog converts a short ISR into large end-to-end latency.
+- Frequency scaling invalidates cycle-based assumptions.
 
 ## Example pattern
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
+void ADC_IRQHandler(void)
 {
-    return x;
+    uint16_t sample = ADC_DATA;
+    clear_adc_irq();
+    adc_queue_push_from_isr(sample);
 }
 ```
+The ISR's execution time is only one component of the end-to-end sample-processing deadline.
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Measure min/max and distribution under worst-case load, including flash/cache state and interrupt nesting. Test maximum event rates and long critical sections. Track the budget in code-review and release criteria.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+Latency is a **system budget**, not a function-local property. Allocate it across interrupt masking, priority interference, ISR work, deferred processing, and hardware response, then validate the worst case on the production configuration.
 
 ## Related
 [[00_Chapter_Index]]
