@@ -1,43 +1,49 @@
 # Shifts
 
-> Canonical C topic note — chapter 43.
+> Canonical C topic note — Chapter 43. Shift operators move the value's bits left or right. Correct reasoning requires the promoted operand type, shift count, signedness, and destination width.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Shifts**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+`x << n` shifts bits toward higher positions; `x >> n` shifts toward lower positions. The right operand must be nonnegative and less than the width of the promoted left operand. Violating the count constraint is undefined behavior.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+The operands undergo integer promotions. For unsigned operands, left shifts are defined modulo the relevant range subject to the shift-count constraint; right shift of unsigned values is a logical shift. For signed operands, especially negative values and left shifts, the rules are more restrictive. Right shift of a negative signed value is implementation-defined.
 
 ### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+- What is the promoted width?
+- Is the shift count provably within range?
+- Is the operand signed or unsigned?
+- Is the shifted value intended as a mathematical multiply/divide or bit manipulation?
+- Does the result need a fixed-width representation?
+
+Prefer unsigned fixed-width operands for protocol/register manipulation.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+Shifts implement field extraction, scaling, register programming, CRC logic, and bit packing. A compiler may turn constant shifts into efficient instructions, but a variable shift can have different latency across cores.
 
 ### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+Use `UINT32_C(1) << bit` only when `bit < 32` is guaranteed. Avoid macros that evaluate a shift expression without validating its width. On narrow MCUs, explicitly sized types prevent accidental promotion surprises.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
+- `1 << 31` can be problematic because `1` is an `int`.
+- `x << 32` on a 32-bit promoted operand is undefined.
+- Right shifting a negative signed value is implementation-defined.
+- Left shifting a signed value into an unrepresentable result can be undefined.
+- Applying a shift before masking can invoke UB even if the final masked result would appear harmless.
 
 ## Example pattern
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
+uint32_t make_mask(unsigned bit)
 {
-    return x;
+    return (bit < 32U) ? (UINT32_C(1) << bit) : 0U;
 }
 ```
+The explicit bound makes the shift count valid.
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Test counts 0, 1, width-1, width, and values around signed boundaries. Enable compiler shift warnings and run UBSan on host builds where applicable. Inspect generated instructions when shift timing matters.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+Never reason about a shift as “just moving bits.” First establish **promoted type, width, signedness, and valid count**; only then reason about the resulting bit pattern and hardware effect.
 
 ## Related
 [[00_Chapter_Index]]
