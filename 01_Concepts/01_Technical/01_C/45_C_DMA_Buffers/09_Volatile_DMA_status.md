@@ -1,31 +1,32 @@
 # Volatile DMA status
 
-> Canonical C topic note — Chapter 45. DMA status fields that software observes through shared memory or MMIO require careful separation of compiler visibility, hardware ownership, and synchronization.
+> Canonical C topic note — Chapter 45. DMA status handling requires separating compiler-visible access, hardware ownership, cache coherence, atomicity, and ordering. `volatile` addresses only a narrow part of this problem.
 
 ## Definition
-`volatile` can be appropriate for memory that may change independently from ordinary program flow, but it does not make a DMA status protocol atomic, coherent, or ordered. A DMA completion indication must be interpreted according to the hardware contract.
+`volatile` can be appropriate for MMIO or memory that changes independently of normal program flow, but it does not make a DMA protocol atomic, coherent, or synchronized. The status representation must be interpreted according to the hardware contract.
 
 ## Mechanism and language rules
-For MMIO status registers, `volatile` preserves required compiler-visible accesses. For DMA descriptors in RAM, whether a field needs `volatile` is a design-specific question; cache maintenance and synchronization often matter more. Marking an entire descriptor volatile can impose unnecessary compiler traffic without solving cache coherency.
+For MMIO status registers, volatile preserves required compiler-visible accesses. For DMA descriptors in RAM, applying `volatile` to the entire object is not automatically correct; cache maintenance and ownership protocols may be more important.
 
 ### What to reason about
-- Is the status in MMIO or RAM?
-- Who writes it?
-- Is the write atomic at the hardware access width?
-- When is it guaranteed visible to the CPU?
-- Does reading it acknowledge/clear hardware state?
+- Is status stored in MMIO or RAM?
+- Who writes it and at what width?
+- When is it guaranteed visible to CPU?
+- Does reading clear/acknowledge the status?
+- Is the payload visible before completion metadata?
+- Are cache lines coherent?
 
 ## Embedded implications
-A status bit can be set by DMA while the CPU cache still contains an old descriptor. Conversely, CPU reads may see stale payload unless invalidation occurs. Completion ordering must cover both descriptor/status and payload.
+A device can update RAM while the CPU cache contains an old descriptor. Conversely, invalidating a cache line can discard unrelated CPU-owned data if ownership is not controlled.
 
 ### Firmware review angle
-Define a completion protocol: DMA writes payload, updates completion metadata, raises interrupt; CPU synchronizes visibility, validates completion, consumes payload, and returns ownership.
+Define a completion protocol: device writes payload, updates completion metadata, signals completion; software synchronizes visibility, validates status, consumes payload, and returns ownership.
 
 ## Edge cases and failure modes
-- `volatile` added but cache remains stale.
-- CPU observes completion before payload visibility.
-- Status read clears a hardware event unexpectedly.
-- Multiword status is read while hardware updates it.
+- `volatile` added while cache remains stale.
+- CPU sees completion before payload visibility.
+- Status read clears an event unexpectedly.
+- Multiword status is observed during a hardware update.
 
 ## Example pattern
 ```c
@@ -34,16 +35,17 @@ struct dma_status {
     uint32_t flags;
 };
 
-/* Visibility/ownership rules must be established around this object. */
 static struct dma_status status;
 ```
-Do not add `volatile` mechanically; derive qualifiers from the actual access model.
+Do not add `volatile` mechanically; derive the access model from the platform and hardware specification.
 
 ## Verification / debugging
-Test cache-enabled operation, repeated completion, partial transfers, and error status. Inspect memory before/after cache maintenance and correlate hardware completion with CPU observations.
+Test cache-enabled and cache-disabled configurations, repeated completions, partial transfers, and error status. Capture raw descriptor bytes and correlate them with device completion events.
+
+Staff-level questions: Who writes the status? What proves visibility? Does reading have side effects? Is the status atomic at the device's access width?
 
 ## Staff-level takeaway
-For DMA status, ask **who writes, who observes, when visibility is guaranteed, and what reading means**. `volatile` answers only one part of that chain.
+For DMA status, always ask **who writes, who observes, when visibility is guaranteed, and what reading means**. `volatile` is only one piece of that protocol.
 
 ## Related
 [[00_Chapter_Index]]
