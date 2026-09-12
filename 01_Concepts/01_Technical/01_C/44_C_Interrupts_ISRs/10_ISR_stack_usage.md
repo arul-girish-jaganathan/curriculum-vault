@@ -1,33 +1,34 @@
 # ISR stack usage
 
-> Canonical C topic note — Chapter 44. ISR stack sizing must account for compiler-generated frames, hardware exception frames, local objects, nesting, and any RTOS/context-switch interaction.
+> Canonical C topic note — Chapter 44. ISR stack sizing must account for hardware exception frames, compiler-generated frames, local objects, callees, floating-point context, nesting, and RTOS interactions.
 
 ## Definition
-ISR stack usage is the additional stack consumption caused by interrupt entry and handler execution. ISO C does not define a stack or ISR frame; the target architecture and ABI do.
+ISR stack usage is the additional stack consumed by interrupt entry and handler execution. ISO C does not define the stack layout; the processor architecture, ABI, compiler, interrupt mechanism, and RTOS do.
 
 ## Mechanism and language rules
-At entry, hardware may push registers/status information. The compiler then creates a handler frame according to the interrupt calling convention. Calls from the ISR can add further frames. Nested interrupts multiply the active context.
+Hardware may push an exception frame, after which compiler-generated prologue code saves additional registers and allocates locals. Calls from the handler add frames, and nested interrupts can create several contexts simultaneously.
 
 ### What to reason about
 - Hardware-saved frame size.
-- Compiler prologue/epilogue size.
-- Maximum local-variable and callee stack use.
-- Maximum call depth.
+- Compiler prologue/epilogue.
+- Local objects and alignment.
+- Maximum transitive call depth.
 - Maximum nesting depth.
-- Alignment requirements.
+- Floating-point/vector context.
+- Fault-handler stack usage.
 
 ## Embedded implications
-Stack overflow can corrupt task state, global data, heap metadata, or exception frames and may produce misleading downstream faults. A debugger's observed stack depth is not a worst-case bound.
+Stack overflow can corrupt task stacks, globals, heap metadata, return addresses, or exception frames, producing misleading secondary faults. Debugger observations are not worst-case bounds.
 
 ### Firmware review angle
-Use linker-defined stack bounds, guard regions, high-water marks, static stack analysis, and worst-case nesting assumptions. Repeat analysis after compiler or optimization changes.
+Use static stack analysis, linker-defined boundaries, guard regions, MPU protection, and runtime high-water marks. Re-run analysis after compiler, optimization, library, or interrupt-priority changes.
 
 ## Edge cases and failure modes
 - Large local arrays in an ISR.
-- Deep library call chains hidden behind one helper.
-- Floating-point context increasing exception frame cost.
-- Nested high-priority interrupts exhausting stack.
-- Debug build frames being larger than release frames or vice versa.
+- Hidden deep library calls.
+- Floating-point use expands saved context.
+- High-priority nesting exhausts stack.
+- Debug and release frames differ substantially.
 
 ## Example pattern
 ```c
@@ -38,13 +39,15 @@ void SPI_IRQHandler(void)
     queue_from_isr(sample);
 }
 ```
-The array and all callees contribute to worst-case stack usage; copying it into another context may also require additional storage.
+The local array plus every callee contributes to worst-case stack usage.
 
 ## Verification / debugging
-Fill stack memory with a known pattern and measure high-water mark under maximum interrupt load. Combine this with static call-graph analysis and deliberate nesting stress.
+Fill the stack with a known pattern and measure high-water mark under worst-case interrupt load. Combine this with compiler stack-usage output and static call-graph analysis. Stress maximum nesting and fault-handler entry.
+
+Staff-level questions: What is the maximum simultaneous frame depth? What context is hardware-saved? Can the fault handler run when the interrupted stack is already near its limit?
 
 ## Staff-level takeaway
-ISR stack usage is a **worst-case composition problem**, not an average measurement. Account for hardware frames, compiler frames, calls, nesting, and optimization when establishing a safety margin.
+ISR stack sizing is a **worst-case composition problem**. Account for hardware, compiler, calls, nesting, and exceptional paths rather than relying on observed average depth.
 
 ## Related
 [[00_Chapter_Index]]
