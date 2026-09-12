@@ -1,43 +1,52 @@
 # ISR review checklist
 
-> Canonical C topic note — chapter 44.
+> Canonical C topic note — Chapter 44. Review an ISR as a hardware-facing concurrency boundary with explicit latency, stack, synchronization, and peripheral contracts.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **ISR review checklist**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+A complete ISR review asks whether the handler is correct for its interrupt architecture, compiler/ABI, peripheral semantics, concurrency model, and real-time budget. ISO C answers only the language-level portion.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+Review the complete transitive call graph, not just the handler body. Confirm that every shared object has a defined ownership/atomicity model and that every volatile/MMIO access matches the hardware specification.
 
 ### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+- **Entry/exit:** correct interrupt declaration and ABI.
+- **Acknowledgement:** source cleared/latched correctly.
+- **Latency:** bounded worst-case execution and masking.
+- **Stack:** handler frame plus maximum nesting.
+- **Synchronization:** atomicity and ordering of shared state.
+- **Callees:** no forbidden blocking/allocation/non-reentrant operations.
+- **Handoff:** queue/flag ownership and overflow behavior.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+Verify event rates, queue depth, watchdog interactions, DMA ownership, and power-state behavior. A handler that is functionally correct can still be system-incorrect if it violates latency or stack budgets.
 
 ### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+Require measured worst-case timing and stack evidence for critical handlers. Keep target-specific attributes and register definitions centralized. Make diagnostic behavior bounded and ISR-safe.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
+- Interrupt storms from uncleared sources.
+- Lost events due to incorrect clear order.
+- Data races hidden by `volatile`.
+- Queue overflow ignored.
+- Nested interrupts exhausting stack.
+- Debugging changes the timing enough to hide the defect.
 
 ## Example pattern
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
+void TIMER_IRQHandler(void)
 {
-    return x;
+    uint32_t status = TIMER_STATUS;
+    TIMER_CLEAR = status;
+    timer_events_from_isr(status);
 }
 ```
+Review the exact clear semantics and whether `status` can contain multiple coalesced events.
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Use static call-graph analysis, maximum-load timing tests, interrupt storms, nested-source tests, queue saturation, and stack high-water measurement. Verify generated ISR prologue/epilogue and register access widths.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+A strong ISR review proves four things: **correct context, bounded latency, safe shared-state handling, and correct hardware interaction**. If any one is uncertain, the handler is not yet production-ready.
 
 ## Related
 [[00_Chapter_Index]]
