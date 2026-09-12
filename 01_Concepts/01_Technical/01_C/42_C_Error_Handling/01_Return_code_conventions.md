@@ -1,59 +1,58 @@
 # Return-code conventions
 
-> Canonical C topic note — Chapter 42. Return codes are one of the most portable C error-reporting mechanisms: a function returns a value representing success or failure, while detailed semantics are defined by the API contract.
+> Canonical C topic note — Chapter 42. Return codes are an explicit error-reporting channel. C does not prescribe a universal convention, so a project must define the value domain, success semantics, failure ownership, and propagation policy.
 
 ## Definition
-A return-code convention defines how a function communicates success, failure, partial success, and sometimes retry or state conditions. ISO C does not prescribe one universal convention. Common designs use `0` for success, nonzero error codes, negative errors, enumerations, or domain-specific status types.
+A return-code API communicates operation status through the function's return value, commonly an enum, integer status, boolean, pointer/sentinel, or standardized error domain. A robust convention separates **success/failure classification** from any output data and makes every return value actionable.
 
 ## Mechanism and language rules
-The return type must have enough representational capacity for every documented outcome. Callers must test the return value before using outputs whose validity depends on success. A good contract distinguishes programmer misuse from environmental/runtime failure and states whether output objects are modified on failure.
+The C type system allows many representations, but the contract must define which values are valid. Enumerations improve readability but do not automatically prevent invalid integer values from arriving through casts, corruption, or ABI boundaries.
 
 ### What to reason about
 - Is zero success or failure?
-- Can multiple error domains collide?
-- Is the returned value signed/unsigned and are conversions safe?
-- Is partial progress represented?
-- Are outputs valid after failure?
-- Does the API require retry, cleanup, or reset?
+- Is success exactly one value or a range?
+- Can multiple failure classes be represented without collisions?
+- Are outputs valid on failure?
+- Does the caller have to inspect the result immediately?
+- Can errors be propagated without losing root-cause information?
+- Is the API callable from ISR, task, or fault context?
 
-Prefer named enums or status types over magic numbers. If ABI compatibility matters, explicitly control the underlying representation through the supported interface rather than assuming enum size.
+Prefer named status types and explicit comparisons. Avoid mixing unrelated numeric domains such as POSIX `errno`, protocol status, driver status, and application status without translation.
 
 ## Embedded implications
-Return codes are deterministic, allocation-free, and suitable for firmware APIs. They avoid global error state and make failure propagation explicit. However, deeply nested error checks can become verbose, so common cleanup patterns should be standardized.
+Return codes are cheap in CPU/RAM terms but can become awkward when APIs cross asynchronous boundaries. A function may return “accepted” while hardware completion occurs later. That distinction must be explicit.
 
 ### Firmware review angle
-Status codes should be stable across bootloader/application boundaries and diagnostic tooling. Reserve ranges for subsystem ownership and document whether codes are persistent protocol values or private implementation details.
+Define a project-wide status model with ownership and conversion rules. Make it clear whether callers must retry, reset a peripheral, enter degraded mode, or propagate the failure. For safety-critical code, review every ignored status as a deliberate decision.
 
 ## Edge cases and failure modes
-- Ignored return values cause silent failure.
-- `-1` can be ambiguous across APIs.
-- Unsigned conversion can turn a negative error into a large positive value.
-- Reusing an enum value for a new meaning breaks diagnostics.
-- Returning success before hardware completion creates a false contract.
+- Ignoring a non-success result.
+- Treating any nonzero value as interchangeable across APIs.
+- Returning a value outside the documented domain.
+- Reporting success before an asynchronous operation actually completes.
+- Translating an error and losing the original diagnostic cause.
 
 ## Example pattern
 ```c
 typedef enum {
     STATUS_OK = 0,
     STATUS_INVALID_ARG,
+    STATUS_BUSY,
     STATUS_TIMEOUT,
-    STATUS_IO,
+    STATUS_HW_FAULT
 } status_t;
 
 status_t sensor_read(uint16_t *value);
 ```
-The contract should additionally state whether `*value` is modified on every failure class.
+The contract should state which outputs are valid for each status and whether `STATUS_BUSY` is retryable.
 
 ## Verification / debugging
-Unit-test every documented status, invalid input, timeout, and partial-progress case. Enable compiler warnings for ignored results where supported or use a project-specific `WARN_UNUSED_RESULT` attribute. Trace status propagation at subsystem boundaries.
+Test every documented status, including injected hardware failure and timeout paths. Use compiler warnings/static analysis to identify ignored results where practical. Review status translation at module boundaries.
 
-Staff-level questions:
-- Can every caller distinguish recoverable from fatal failure?
-- Is the status stable enough for telemetry and ABI boundaries?
-- Are outputs and ownership rules explicit on failure?
+Staff-level questions: Is the status domain closed and documented? Can a caller distinguish retryable from terminal failure? Does the return value describe the requested effect or merely local acceptance?
 
 ## Staff-level takeaway
-A return code is valuable only when its **semantic contract is unambiguous**. Design status spaces deliberately, preserve information through propagation, and make ignored or misinterpreted errors difficult to introduce.
+A return code is useful only when its **semantic domain and caller obligations are unambiguous**. Standardize status meanings across module boundaries and make ignored failures explicit design decisions.
 
 ## Related
 [[00_Chapter_Index]]
