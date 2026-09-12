@@ -1,43 +1,47 @@
 # Cache maintenance
 
-> Canonical C topic note — chapter 45.
+> Canonical C topic note — Chapter 45. Cache maintenance keeps CPU-visible and DMA-visible memory coherent on systems where caches are not automatically coherent with the DMA master.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Cache maintenance**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+For a CPU writing a DMA source buffer, cache clean/write-back operations may be required before DMA reads it. For DMA-written memory, cache invalidation may be required before the CPU consumes it. Exact operations are architecture and cache-policy specific.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+C's memory model does not define hardware cache coherency. `volatile` does not flush caches. Compiler barriers do not necessarily perform cache maintenance, and CPU memory barriers do not necessarily clean or invalidate caches.
 
 ### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+- Is the region cacheable?
+- Is the DMA master coherent?
+- What cache line size and alignment apply?
+- Must clean/invalidate cover complete lines?
+- What ordering is required before starting or after completing DMA?
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+Partial-line maintenance can corrupt unrelated data when cache operations operate at line granularity. Non-cacheable DMA pools simplify coherency at the cost of access latency and memory-region constraints.
 
 ### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+Centralize cache/DMA synchronization APIs and document ownership transitions. Do not scatter architecture-specific cache instructions throughout drivers.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
+- CPU reads stale cache after DMA completion.
+- CPU dirty cache overwrites newer DMA data later.
+- Cleaning an incorrectly aligned range affects neighboring objects.
+- Assuming coherent behavior on one MCU family and porting to a non-coherent system.
 
 ## Example pattern
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
+prepare_dma_for_device(buf, len); /* architecture-specific */
+start_dma(buf, len);
+wait_for_completion();
+prepare_dma_for_cpu(buf, len);    /* architecture-specific */
+consume(buf, len);
 ```
+The helper boundaries should hide cache-line and barrier details.
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Test with caches enabled and deliberately use patterns that expose stale data. Inspect cache-line alignment and memory attributes. Compare behavior using coherent and non-coherent mappings where the platform supports both.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+DMA cache handling is a **memory-visibility protocol**, not a C qualifier problem. Separate cache maintenance, compiler ordering, CPU barriers, and hardware ownership, and implement each at the correct abstraction layer.
 
 ## Related
 [[00_Chapter_Index]]
