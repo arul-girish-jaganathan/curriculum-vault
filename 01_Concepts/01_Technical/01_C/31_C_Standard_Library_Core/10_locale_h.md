@@ -3,41 +3,68 @@
 > Canonical C topic note — chapter 31.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **locale.h**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+`locale.h` defines the C locale mechanism. `setlocale` selects or queries locale settings and `localeconv` exposes locale-dependent numeric and monetary formatting information. The standard defines categories such as `LC_CTYPE`, `LC_NUMERIC`, `LC_TIME`, `LC_COLLATE`, `LC_MONETARY`, and `LC_ALL`, but available locale names, data, encodings, and libc support are implementation-specific. The initial locale is the `"C"` locale.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+```c
+#include <locale.h>
+
+if (setlocale(LC_ALL, "C") == NULL) {
+    /* Requested locale unavailable. */
+}
+
+struct lconv *info = localeconv();
+```
+
+Passing a null locale name queries the current setting. A successful `setlocale` returns a library-managed string describing the resulting locale. `localeconv` returns library-managed formatting information.
 
 ### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+- Locale is library/global state rather than metadata attached to each string.
+- Categories have distinct effects; `LC_ALL` can change several at once.
+- Locale names and installed locale data are not portable assumptions.
+- C locale behavior is not equivalent to Unicode or UTF-8 support.
+- `localeconv` data is owned by the implementation.
+- Concurrent locale changes require implementation-specific consideration.
+- Human presentation and machine protocol formatting should normally be separate concerns.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+Dynamic locale support can add substantial libc code, locale tables, RAM, and initialization complexity. Most embedded protocols require deterministic output and should not depend on mutable process-wide locale state.
+
+For firmware, use explicit protocol encodings, fixed decimal conventions, and explicit character assumptions. Enable locale functionality only when the product genuinely needs localized human-facing behavior.
 
 ### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+Check libc/target support, code-size and RAM impact, locale initialization, concurrent access, deterministic boot behavior, and whether serialized data changes when locale state changes.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
+Do not assume a requested locale such as `en_US.UTF-8` exists on every target. A failed `setlocale` must be handled rather than silently assumed successful.
 
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
+Locale-sensitive formatting is a poor choice for persistent or wire data because decimal separators, collation, and classification may vary. Global state can also surprise unrelated modules that expect the `"C"` locale.
 
 ## Example pattern
+Keep machine-readable formatting explicit:
+
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
+/* A protocol specifies '.' regardless of user locale. */
+int format_temperature(char *dst, size_t cap, int milli_celsius)
 {
-    return x;
+    return snprintf(dst, cap, "%d.%03d",
+                    milli_celsius / 1000,
+                    milli_celsius % 1000);
 }
 ```
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Run tests under every supported locale and compare serialized output byte-for-byte. Measure flash/RAM impact on each MCU configuration and verify failure behavior when locale data is unavailable.
+
+Staff-level review questions:
+- Is this output for a human or a machine?
+- Can locale state leak across module boundaries?
+- What is the deterministic protocol representation?
+- What happens if locale selection fails?
+- Is the target libc actually providing the required locale data?
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+`locale.h` is a controlled interface to locale-dependent library behavior, not a complete internationalization framework. In embedded systems, isolate it at human-interface boundaries and keep protocols, persistent formats, diagnostics consumed by automation, and device interfaces explicitly deterministic.
 
 ## Related
 [[00_Chapter_Index]]
