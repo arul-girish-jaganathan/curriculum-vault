@@ -1,43 +1,51 @@
 # Population count
 
-> Canonical C topic note — chapter 43.
+> Canonical C topic note — Chapter 43. Population count (popcount) counts the number of set bits in an integer representation.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Population count**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+For an unsigned word, popcount returns a value from zero through the word width. It is useful for masks, resource allocation, parity-related algorithms, bitmap management, and protocol validation. C does not require a particular implementation strategy.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+A classic portable algorithm repeatedly clears the lowest set bit: `x &= x - 1`, incrementing a counter until zero. Hardware may provide a dedicated instruction; compilers can recognize loops or expose builtins.
 
 ### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+- What is the operand width?
+- Is the operand unsigned?
+- Is latency required to be constant with respect to input population?
+- Does the target have a hardware instruction?
+- Is the result type large enough to represent the maximum count?
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+The Kernighan-style loop takes work proportional to the number of set bits. A lookup-table implementation trades flash for predictable operations. A native instruction may be both smaller and faster. On timing-sensitive or security-sensitive paths, input-dependent latency must be considered.
 
 ### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+For a 32-bit word the maximum result is 32, so a small unsigned type is sufficient for the result, but using `unsigned` often avoids unnecessary conversion issues. Prefer compiler-supported intrinsics behind a portability layer when performance is critical.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
+- Signed operands invite representation/sign issues.
+- Lookup tables can create cache-dependent timing on larger systems.
+- Assuming hardware popcount exists on every target harms portability.
+- Treating the count as parity confuses two different operations.
 
 ## Example pattern
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
+unsigned popcount32(uint32_t x)
 {
-    return x;
+    unsigned count = 0U;
+    while (x != 0U) {
+        x &= x - 1U;
+        ++count;
+    }
+    return count;
 }
 ```
+The loop removes one set bit per iteration.
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Test zero, one-bit values, all bits set, alternating patterns, and random words. Compare against a trusted host implementation. Benchmark worst-case and best-case latency on the actual MCU if timing matters.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+Choose popcount implementation based on **target instruction set, code size, latency determinism, and security requirements**, not merely source-level elegance.
 
 ## Related
 [[00_Chapter_Index]]
