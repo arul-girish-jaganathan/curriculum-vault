@@ -1,30 +1,37 @@
 # Target triples
 
-> Canonical C topic note — chapter 38.
-
 ## Definition
-A target triple identifies the broad compilation target, conventionally using architecture, vendor, operating system, and environment components, such as `arm-none-eabi`. It is a toolchain identity, not a complete description of every MCU option.
+A **target triple** is a compact identifier describing the platform a compiler toolchain targets, commonly using forms such as `architecture-vendor-system` with optional environment/ABI information. It helps select instruction set, object format, runtime assumptions, and compatible libraries.
+
+## Scope and boundaries
+Triple syntax and exact component meanings are toolchain-specific. Do not infer a complete ABI merely from a string such as `arm-none-eabi`; CPU features, floating-point options, ABI flags, libc, and compiler version can still matter.
 
 ## Mechanism and language rules
-The triple influences compiler defaults, ABI, runtime libraries, assembler syntax, and linker behavior. Additional options select a concrete CPU, ISA extensions, floating-point unit, ABI variant, and tuning strategy.
+A target selection influences predefined macros, instruction selection, object format, assembler syntax, linker behavior, and library search paths. Related flags may refine the target:
 
-For example, two builds may share `arm-none-eabi` but differ in Cortex-M core, floating-point instructions, optimization tuning, or vendor-specific startup code.
+```text
+architecture -> CPU/features -> ABI -> sysroot/runtime -> linker
+```
+
+For example, an ARM bare-metal toolchain and an ARM Linux toolchain can target similar instruction sets while requiring completely different startup and runtime environments.
 
 ## Embedded implications
-The target identity must match silicon and board assumptions. Wrong ISA/FPU selection can cause immediate faults; wrong ABI can silently corrupt calls across object boundaries. A build manifest should therefore record triple plus CPU/architecture flags and library versions.
+Target triples are particularly important in CI, package management, build systems, and multi-target firmware. A project may build Cortex-M firmware, a host simulator, and a Linux utility from the same repository. Each must have an explicit toolchain configuration rather than inheriting whichever compiler happens to be first on `PATH`.
+
+CPU feature flags can alter instruction availability, floating-point calling conventions, and compatibility with deployed silicon. A binary built for a newer instruction extension may fail immediately on an older MCU.
 
 ## Edge cases and failure modes
-- Treating the triple as sufficient hardware identification.
-- Mixing `arm-none-eabi` and Linux/ARM objects.
-- Selecting an ISA extension unsupported by the installed MCU.
-- Mixing hard-float and soft-float objects.
+- Correct architecture but wrong operating-system/runtime environment.
+- Correct CPU family but wrong floating-point ABI.
+- Confusing architecture name with exact microarchitecture/features.
+- Using a target triple as the only reproducibility identifier.
+- Host tools accidentally inheriting target compiler environment variables.
 
 ## Verification / debugging
-Inspect compiler predefined macros, verbose compiler output, ELF attributes, and object metadata. Compile ABI probes and verify the final image's architecture attributes. Make the target tuple a CI input rather than an implicit workstation default.
+Record the target triple plus CPU, feature, ABI, sysroot, compiler, assembler, and linker versions. Inspect ELF headers and attributes to verify architecture and ABI. In CI, print the complete toolchain configuration and reject unexpected triples.
+
+## Performance, memory, timing and power
+Target selection changes instruction encoding, available hardware operations, floating-point support, and runtime libraries, all of which affect code size, execution time, and energy.
 
 ## Staff-level takeaway
-A target triple is the beginning of target identity, not the end. Record every ABI and ISA dimension that can affect interoperability or executable correctness.
-
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+Use the target triple as the **starting coordinate**, not the entire platform contract. Reproducible embedded builds require the triple plus explicit CPU features, ABI, runtime, linker, and tool versions.
