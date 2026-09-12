@@ -1,35 +1,35 @@
 # DMA debugging
 
-> Canonical C topic note — Chapter 45. DMA failures require simultaneous reasoning about C objects, hardware descriptors, ownership, cache visibility, address translation, interrupts, and peripheral state.
+> Canonical C topic note — Chapter 45. DMA failures require simultaneous reasoning about C objects, descriptor layout, ownership, cache visibility, address translation, interrupts, and peripheral state. The CPU call stack alone is incomplete evidence.
 
 ## Definition
-DMA debugging identifies why a device read/write differs from software expectations. The CPU call stack alone is insufficient because the DMA engine is an independent bus master.
+DMA debugging identifies why device reads/writes differ from software expectations. The DMA engine is an independent bus master, so the causal path can continue after the CPU function returns.
 
 ## Mechanism and language rules
-A useful timeline is: allocate/identify buffer -> prepare data -> synchronize cache -> build descriptor -> publish ownership -> start DMA -> device transfers -> completion/error -> synchronize for CPU -> consume -> release/reuse. Each transition is a possible defect boundary.
+A useful timeline is: identify/allocate buffer -> prepare data -> synchronize cache -> build descriptor -> publish ownership -> start DMA -> transfer -> completion/error -> synchronize for CPU -> consume -> release/reuse. Each transition is a possible fault boundary.
 
 ### What to reason about
-- Buffer address and size.
-- Descriptor contents as seen by hardware.
+- Buffer address, length, alignment, and lifetime.
+- Descriptor bytes as actually visible to hardware.
 - Ownership state.
 - Cache state and barriers.
-- Alignment and memory region.
+- CPU versus device address mapping.
 - Completion semantics.
-- Reset/abort behavior.
+- Abort/reset behavior.
 
 ## Embedded implications
-Typical symptoms include stale data, missing packets, corrupted buffers, descriptor loops, sporadic faults, and failures only when optimization/cache is enabled. Debugger memory views can mislead when cache or another bus master is involved.
+Common symptoms include stale data, missing packets, corrupted buffers, descriptor loops, and failures only with cache or optimization enabled. Debugger memory windows can be misleading when caches or other bus masters are involved.
 
 ### Firmware review angle
-Capture descriptor snapshots, buffer addresses, lengths, ownership bits, and sequence numbers. Use known patterns to distinguish stale data from overwrite and address errors. If possible, use bus/peripheral trace rather than halting the CPU.
+Capture descriptor snapshots, buffer addresses, lengths, ownership bits, sequence numbers, and error status. Use deterministic patterns and one-descriptor tests before adding ring complexity.
 
 ## Edge cases and failure modes
-- DMA uses a stale descriptor due to cache.
-- CPU reuses a buffer too early.
-- Length exceeds the actual object/buffer.
-- Address is valid to CPU but invalid to device.
-- Completion interrupt is acknowledged before all required visibility synchronization.
-- Device continues after software timeout.
+- DMA reads stale descriptor contents from cache.
+- CPU reuses a buffer before completion.
+- Length exceeds the real object/buffer.
+- CPU-valid address is device-invalid.
+- Completion is observed before payload visibility is synchronized.
+- Device continues after a software timeout.
 
 ## Example pattern
 ```c
@@ -37,23 +37,21 @@ fill_pattern(buf, len);
 cache_clean_for_device(buf, len);
 program_dma(buf, len);
 start_dma();
-/* wait for completion */
+/* wait for documented completion */
 cache_invalidate_for_cpu(buf, len);
 verify_pattern(buf, len);
 ```
-The helpers are platform-specific and represent the required visibility boundaries.
+The synchronization helpers are platform-specific and represent the ownership/visibility boundaries.
 
 ## Verification / debugging
-Start with deterministic patterns and one descriptor. Validate address, length, alignment, ownership, cache maintenance, and completion before adding ring complexity. Then test bursts, wraparound, errors, reset, and concurrent traffic.
+Begin with one buffer and one descriptor. Verify address, length, alignment, ownership, cache state, and completion. Then test bursts, wraparound, descriptor reuse, timeout, abort, reset, and concurrent traffic.
 
-Staff-level questions:
-- Which agent wrote the bytes that are wrong?
-- What did the device actually see?
-- Is the descriptor lifetime valid?
-- What evidence distinguishes cache, ownership, address, and hardware faults?
+Use sequence numbers and known patterns to distinguish stale data, overwrite, wrong address, and ordering failures. Correlate CPU logs with peripheral/bus trace when available.
+
+Staff-level questions: Which agent wrote the bad bytes? What did the device actually see? Is the descriptor lifetime valid? What evidence separates cache, ownership, address, and silicon faults?
 
 ## Staff-level takeaway
-DMA debugging is a **distributed memory-visibility problem**. Build a timeline of ownership and visibility, inspect what hardware—not just the CPU debugger—could see, and reduce complex rings to a minimal reproducible transfer before diagnosing higher-level code.
+DMA debugging is a **distributed memory-visibility and ownership problem**. Build a precise timeline of who owns and can see each object, then reduce complex transfers to the smallest reproducible hardware transaction.
 
 ## Related
 [[00_Chapter_Index]]
