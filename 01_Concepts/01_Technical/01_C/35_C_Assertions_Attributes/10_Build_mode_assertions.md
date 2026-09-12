@@ -3,41 +3,59 @@
 > Canonical C topic note — chapter 35.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Build-mode assertions**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+Build-mode assertions are compile-time checks that validate configuration assumptions for a particular firmware variant: target MCU, feature set, memory map, ABI, safety profile, debug mode, or manufacturing configuration. They combine `_Static_assert`, preprocessor conditionals, and project configuration to reject invalid combinations early.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+Use preprocessor checks when a symbol's presence controls compilation:
+```c
+#if FEATURE_DMA && !FEATURE_CACHE_MAINTENANCE
+#error "DMA configuration requires cache maintenance support"
+#endif
+```
+Use `_Static_assert` when the compiler can evaluate a typed constant expression:
+```c
+_Static_assert(RX_SIZE <= 4096u, "RX_SIZE exceeds supported range");
+```
+`#error` and `_Static_assert` are complementary: the former is preprocessing/configuration validation, the latter is language-level constant-expression validation.
 
 ### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+- Validate mutually exclusive features and required dependencies.
+- Prefer typed compile-time checks over string or textual tricks when possible.
+- Make configuration failures deterministic and readable.
+- Ensure generated configuration headers are reproducible and versioned.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+Build matrices can explode as products acquire MCU variants, communication options, memory sizes, boot modes, and safety levels. Build-mode assertions prevent unsupported combinations from silently producing an image that boots but behaves incorrectly.
+
+Typical checks include flash/RAM budgets, peripheral availability, DMA alignment, interrupt priorities, queue sizes, feature dependencies, and protocol configuration.
 
 ### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+Treat the configuration space as an architectural model. CI should compile representative and boundary configurations, including intentionally invalid configurations to prove that guards fire.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
+A configuration macro can be defined differently in different translation units, producing inconsistent declarations or behavior. Generated headers can also become stale relative to the build system.
 
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
+Avoid checks that merely assert the current implementation instead of the product requirement. Also avoid a huge collection of duplicated `#if` logic that makes configuration behavior impossible to reason about.
 
 ## Example pattern
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
+#if defined(TARGET_MCU_A)
+#define FLASH_BYTES  (512u * 1024u)
+#elif defined(TARGET_MCU_B)
+#define FLASH_BYTES  (1024u * 1024u)
+#else
+#error "Unsupported target"
+#endif
+
+_Static_assert(FLASH_BYTES >= REQUIRED_IMAGE_BYTES,
+               "target flash is too small");
 ```
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Generate a configuration manifest during CI. Compile all supported product profiles and several invalid combinations. Keep compiler command lines and generated headers as build artifacts so a released image can be reconstructed.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+Build assertions convert configuration complexity into explicit, reviewable constraints. The goal is not maximum preprocessor usage; it is making invalid product configurations impossible to ship.
 
 ## Related
 [[00_Chapter_Index]]
