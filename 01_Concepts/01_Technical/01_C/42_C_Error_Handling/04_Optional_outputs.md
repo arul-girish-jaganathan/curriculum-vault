@@ -1,57 +1,61 @@
 # Optional outputs
 
-> Canonical C topic note — Chapter 42. An optional output is an output object a caller may omit, usually represented by a nullable pointer. The API contract must define whether `NULL` means “do not produce,” “not supported,” or an invalid argument.
+> Canonical C topic note — Chapter 42. An optional output is a result the caller may request by supplying a valid pointer or configuration flag. The API must define whether a null/absent output is allowed and whether computation still occurs.
 
 ## Definition
-A function such as `status_t read_value(value_t *out)` may accept `out == NULL` to indicate that the caller does not need the result. ISO C defines null pointer semantics, but whether a particular API accepts a null pointer is entirely contractual.
+An optional output lets one function support callers that need only the primary result while avoiding unnecessary storage or copying. A common C pattern is a nullable pointer such as `size_t *written`.
 
 ## Mechanism and language rules
-The callee must check the pointer before dereferencing it when null is permitted. The contract should state whether the operation itself remains valid without the output and whether output storage is modified on failure.
+A nullable pointer is meaningful only if the contract explicitly permits null. The implementation must branch before dereferencing it. The function must also define output validity on success and every failure path.
 
 ### What to reason about
-- Is `NULL` explicitly permitted?
-- Is the pointer required to be aligned and point to writable storage?
-- Is the output initialized on every success path?
-- Is partial output possible on failure?
-- Can the caller pass an aliased input/output object?
+- Is `NULL` a legal input for the optional output?
+- Is the output modified on partial failure?
+- Does absence of the output change timing or side effects?
+- Does the pointer reference writable storage of sufficient size and lifetime?
+- Can an output alias an input buffer?
+- Is the output produced before an asynchronous operation completes?
 
-A nullable output is not a license to silently ignore an invalid pointer. Distinguish “optional” from “required but unchecked.”
+Optional outputs should not silently change the semantic success condition.
 
 ## Embedded implications
-Optional outputs can reduce unnecessary copies and RAM use. They are useful for APIs that can cheaply answer a status-only query. However, repeated nullable parameters can make contracts hard to understand and can hide ownership/lifetime requirements.
+Optional outputs can reduce RAM and copy costs in firmware APIs, especially when only some callers need diagnostics. They are useful for optional byte counts, status details, timestamps, or hardware metadata.
 
 ### Firmware review angle
-For safety-critical interfaces, prefer explicit API variants or a result/status object when optionality becomes complex. Document whether an output is produced before a timeout or only after complete hardware transfer.
+Document nullability and ownership. For DMA/asynchronous APIs, distinguish “bytes accepted” from “bytes completed,” and never let an optional pointer hide a required synchronization or lifetime rule.
 
 ## Edge cases and failure modes
-- Dereferencing a permitted null output causes UB.
-- Writing an output before discovering an error leaves ambiguous partial state.
-- Passing the same object as multiple outputs can create aliasing/ordering problems.
-- Treating an optional output as always initialized causes stale-data bugs.
+- Dereferencing a null optional pointer.
+- Writing partial output before reporting failure without documenting it.
+- Optional output aliases an input and breaks assumptions.
+- Caller passes a pointer to expired stack storage.
+- Null output changes behavior accidentally rather than merely suppressing storage.
 
 ## Example pattern
 ```c
-status_t adc_read(uint16_t *sample)
+status_t encode(const uint8_t *src, size_t len,
+                uint8_t *dst, size_t cap, size_t *written)
 {
-    uint16_t value = hardware_read_adc();
-    if (sample != NULL) {
-        *sample = value;
+    size_t n = compute_encoded_size(src, len);
+    if (n > cap) {
+        return STATUS_NO_SPACE;
+    }
+    write_encoded(dst, src, len);
+    if (written != NULL) {
+        *written = n;
     }
     return STATUS_OK;
 }
 ```
-The contract must still define what happens if hardware acquisition fails and whether `sample` remains untouched.
+The contract should state whether `written` is unchanged on failure.
 
 ## Verification / debugging
-Unit-test `NULL`, valid aligned storage, boundary values, failure paths, and aliasing combinations. Static analysis should verify that nullable parameters are checked before dereference.
+Test both `NULL` and non-null outputs, exact capacity, one-byte-too-small capacity, aliasing cases where permitted, and failure paths. Use static analysis/nullability annotations when available.
 
-Staff-level questions:
-- Does optionality actually simplify the API?
-- Is the output contract atomic on failure?
-- Can a result type communicate success and value more clearly?
+Staff-level questions: Is the output genuinely optional? Can the contract guarantee its validity independently of the main result? Does the API remain understandable compared with a result structure?
 
 ## Staff-level takeaway
-Optional outputs are a useful C pattern when **nullability and output validity are explicit contracts**. Keep the number of states small and test every combination of pointer presence and operation result.
+Optional outputs are safe when **nullability, validity, ownership, and failure semantics are explicit**. They should reduce unnecessary work, not hide essential contract information.
 
 ## Related
 [[00_Chapter_Index]]
