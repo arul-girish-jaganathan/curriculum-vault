@@ -3,41 +3,35 @@
 > Canonical C topic note — chapter 40.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Harness design**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+A fuzz or sanitizer harness is a small adapter that converts raw test input into a controlled call to the code under test and defines what constitutes failure.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+A strong harness initializes required state, bounds input, avoids global nondeterminism, calls one meaningful entry point, and releases resources. It should be cheap enough for millions of executions.
 
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
-
-## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
-
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
-
-## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
+int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 {
-    return x;
+    parser_feed(data, size);
+    return 0;
 }
 ```
 
+The exact API is framework-specific; the engineering principles are general.
+
+## Embedded implications
+Wrap protocol and algorithm modules around fake clocks, deterministic storage, bounded allocators, and simulated peripherals. Avoid bringing the entire RTOS/driver stack into every fuzz execution.
+
+## Edge cases and failure modes
+- Harness bugs mistaken for product bugs.
+- Global state leaking between iterations.
+- Unbounded allocations or recursion.
+- Failure oracles that detect only crashes and miss invalid state.
+
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Unit-test the harness itself, enforce time/input limits, reset state between cases, and add assertions for invariants. Run with sanitizers and deterministic seeds when reproducing failures.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+The harness is part of the test architecture. Its fidelity, determinism, and failure oracle determine what the fuzzer can actually prove.
 
 ## Related
 [[00_Chapter_Index]]
