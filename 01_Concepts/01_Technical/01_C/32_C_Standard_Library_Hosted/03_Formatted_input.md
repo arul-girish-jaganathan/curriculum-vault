@@ -1,44 +1,70 @@
 # Formatted input
 
-> Canonical C topic note — chapter 32.
-
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Formatted input**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+Formatted input uses `<stdio.h>` functions such as `scanf`, `fscanf`, `sscanf`, and their `v*` variants to parse character input according to a format string and store converted results through caller-supplied pointers. Unlike formatted output, input conversion writes into application objects, so destination type, lifetime, bounds, and input termination are critical parts of the contract.
+
+## Scope and Boundaries
+* **Covers:** `scanf` family semantics, conversion specifiers, assignment suppression, field widths, return values, whitespace behavior, scansets, and bounded input design.
+* **Does not cover:** the complete variadic ABI or general parsing architecture, which belongs in adjacent chapters.
+
+## Why Does It Exist
+The scanf family provides a concise standard mechanism for converting textual input into typed C objects. It is useful for small hosted utilities and tests, but its implicit parsing rules and pointer-based destinations make it a poor default for untrusted or strict embedded protocol input.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+Each conversion specifies what input is consumed and what destination type is expected. Except for suppressed conversions and conversions such as `%c`, `%n`, and scansets with their own rules, whitespace in the format can consume an arbitrary amount of input whitespace. Numeric conversions skip leading whitespace automatically.
+
+The destination argument must point to an object of the correct type and sufficient size. Field widths constrain how much input a conversion consumes, but they do not universally mean the same thing as destination capacity; `%s` needs room for the terminating null character in addition to the characters matched.
+
+The return value is the number of assignments successfully performed, excluding suppressed conversions. `EOF` can indicate that input failure occurred before the first conversion could be assigned.
 
 ### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+- Every non-suppressed conversion generally requires a pointer to the exact destination type expected by the format.
+- `%d` expects `int *`, `%u` expects `unsigned int *`, `%ld` expects `long *`, `%zu` expects `size_t *`, and similar length-modifier rules matter.
+- `%s` without a field width can overflow the destination; `%Ns` limits the input characters but still requires `N + 1` bytes.
+- `%c` does not skip leading whitespace unless the format explicitly contains whitespace before it, and it does not append a null terminator.
+- `%n` writes the number of characters consumed and can become a security concern when format strings are not fully controlled.
+- Always distinguish matching failure from end-of-file and from an application-level invalid value.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+`scanf` often has poor worst-case behavior for firmware: it can be large, slow, blocking, locale-aware, and difficult to bound. Parsing input from UART, CAN gateways, USB, or network interfaces with scanf can create denial-of-service-like stalls when malformed or incomplete input is received.
 
 ### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+Prefer a staged parser: receive a bounded frame, validate its length and syntax, then convert fields explicitly with functions such as `strtoul` or a small integer parser. If scanf is retained for a diagnostic shell, enforce input buffers, field widths, command timeouts, and a maximum line length.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
+- `scanf("%s", buf)` can overflow `buf`.
+- `scanf("%d", &value)` does not prove that the complete input token was valid; trailing characters may remain in the stream.
+- A loop such as `while (scanf("%d", &x) != EOF)` can become infinite when matching repeatedly fails without consuming the offending character.
+- `%f` in scanf expects `float *`, while `%lf` expects `double *`; this differs from printf where `%f` arguments are passed as `double` because of default argument promotions.
+- `%c` can read a newline left by a previous numeric conversion, surprising code that expects a visible character.
+- Using a destination pointer to an object that has gone out of lifetime violates the function's contract and can produce memory corruption.
 
 ## Example pattern
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
+#include <stdio.h>
+
+static int read_u32(FILE *stream, unsigned int *out)
 {
-    return x;
+    if (stream == NULL || out == NULL) {
+        return -1;
+    }
+
+    return (fscanf(stream, "%u", out) == 1) ? 0 : 1;
 }
 ```
 
+For a fixed-size string, use an explicit field width tied to the actual destination size, for example `"%15s"` for a 16-byte buffer, and still validate the resulting token.
+
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Unit-test empty input, whitespace-only input, malformed numeric prefixes, overflow-range numbers, missing delimiters, long strings, and trailing garbage. Verify that every destination is correctly typed and sized. Static analysis and compiler format checking can catch many mismatches, but they cannot prove that a runtime input is semantically acceptable.
+
+For firmware, test incomplete UART frames and deliberately slow input to expose blocking behavior.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+The scanf family is compact but has a complicated input state machine and weak safety ergonomics. A Staff engineer should treat it as a convenience parser for controlled input, not as a general-purpose protocol parser. For production firmware, explicit bounded tokenization followed by checked conversion usually gives better safety, determinism, diagnostics, and testability.
 
 ## Related
 [[00_Chapter_Index]]
 [[../00_Complete_Topic_Map]]
+[[15_C_Strings_Characters/00_Chapter_Index]]
+[[42_C_Error_Handling/00_Chapter_Index]]
