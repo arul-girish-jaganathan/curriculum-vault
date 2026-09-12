@@ -3,41 +3,25 @@
 > Canonical C topic note — chapter 40.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Integer sanitization**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+Integer sanitization detects selected arithmetic and conversion hazards such as signed overflow, invalid shifts, and some implicit conversion problems, depending on compiler configuration.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
-
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+Sanitizers instrument operations that have defined preconditions. For example, signed overflow is undefined in C, while unsigned arithmetic wraps modulo the width of the unsigned type. Correct diagnosis requires knowing the actual operand types after integer promotions and conversions.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
-
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+Integer defects commonly occur at packet lengths, register fields, counters, timeouts, array indices, and size calculations. Host sanitizer tests should exercise maximum, minimum, zero, and boundary-crossing values.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
-```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
-```
+- Assuming unsigned wrap is automatically safe.
+- Sanitizing after a narrowing conversion instead of validating the range before conversion.
+- Missing integer-promotion effects.
+- Using sanitizer behavior as the production arithmetic policy.
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Test boundary matrices and run sanitizer-enabled builds. Add explicit checked arithmetic at security/safety boundaries where overflow is part of the expected input model.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+Sanitizers identify suspicious arithmetic; robust APIs define what ranges are legal and how overflow is handled. The latter is the product contract.
 
 ## Related
 [[00_Chapter_Index]]
