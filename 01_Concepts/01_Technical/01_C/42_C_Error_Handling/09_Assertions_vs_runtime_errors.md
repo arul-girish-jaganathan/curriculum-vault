@@ -1,43 +1,58 @@
 # Assertions vs runtime errors
 
-> Canonical C topic note — chapter 42.
+> Canonical C topic note — Chapter 42. Assertions express programmer/system invariants that should not normally be violated; runtime error handling represents expected environmental or operational failures.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Assertions vs runtime errors**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+An assertion answers “this condition must be true if the program is correct.” Runtime error handling answers “this operation can legitimately fail, and the caller must decide what to do.” Confusing the two produces either fragile production firmware or silently ignored defects.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+`assert()` is controlled by `NDEBUG`; a disabled assertion does not execute its expression. Therefore an assertion expression must not contain required side effects. `_Static_assert`/`static_assert` checks compile-time constraints and is fundamentally different from runtime `assert`.
 
 ### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+- Is the condition a programmer invariant or an expected failure?
+- Must the check exist in production?
+- Does the expression have side effects?
+- What is the recovery action if the invariant fails?
+- Can the system safely continue after violation?
+
+For externally controlled input, hardware timeout, unavailable peripheral, allocation failure, or communication loss, normal error handling is generally appropriate. For impossible internal states, an assertion or fail-stop mechanism may be appropriate.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+A production assertion may reset, enter a fault handler, capture context, or transition to a safe state. Removing assertions entirely can remove useful diagnostics; leaving expensive assertions in hard real-time paths can violate timing budgets.
 
 ### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+Define assertion policy by subsystem and safety level. Safety-critical systems may require production checks even when they are not implemented using the standard `assert()` macro. The important property is explicit invariant checking and defined failure containment.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
+- Side effects disappear under `NDEBUG`.
+- An assertion is used to validate user/network input and causes unnecessary resets.
+- A runtime failure is asserted instead of recovered.
+- Assertion failure itself performs unsafe logging or allocation.
 
 ## Example pattern
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
+status_t queue_push(queue_t *q, item_t item)
 {
-    return x;
+    assert(q != NULL);          /* programmer contract */
+    if (q->count == QUEUE_CAPACITY) {
+        return STATUS_FULL;     /* expected runtime condition */
+    }
+    q->items[q->count++] = item;
+    return STATUS_OK;
 }
 ```
+Whether `q == NULL` should be an assertion or runtime error depends on the API contract and safety policy.
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Build with and without `NDEBUG` and verify that required behavior is unchanged. Test all expected runtime failures and deliberately violate key invariants in a controlled environment to validate fault capture and recovery.
+
+Staff-level questions:
+- What class of failure is this?
+- What happens in production when the condition is violated?
+- Does the check protect a safety boundary or merely aid debugging?
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+Use assertions to expose **broken assumptions** and runtime errors to represent **expected operational failure**. The distinction should be explicit in API and safety contracts, not left to individual coding style.
 
 ## Related
 [[00_Chapter_Index]]
