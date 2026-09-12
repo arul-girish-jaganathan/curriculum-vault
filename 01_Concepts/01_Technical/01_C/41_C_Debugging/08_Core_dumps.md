@@ -1,39 +1,30 @@
 # Core dumps
 
-> Canonical C topic note — Chapter 41. A core dump is a captured snapshot of process or firmware execution state used for post-mortem analysis. The format and capture mechanism are platform-specific, but the analysis principles apply broadly.
+> Canonical C topic note — chapter 41.
 
 ## Definition
-A core dump preserves selected memory and CPU state after abnormal termination so engineers can analyze a failure without reproducing it interactively. On hosted systems this may include stacks, mappings, registers, and selected memory segments. Embedded systems commonly implement a smaller crash record in reserved RAM, flash, external storage, or a diagnostic transport.
+A core dump is a captured snapshot of process state after a fatal failure, typically containing memory, registers, mappings, and metadata needed for post-mortem analysis. Core dumps are primarily hosted-OS concepts; bare-metal firmware normally needs an explicitly designed crash record instead.
 
 ## Mechanism and language rules
-A dump records machine state; it does not preserve the full C abstract-machine history. The analyst reconstructs likely execution from PC, stack, registers, memory, symbols, logs, and invariants.
+A core records implementation-level state, not a direct representation of the C abstract machine. A debugger combines the core with the exact executable and debug symbols to reconstruct threads, stacks, variables, and instruction locations.
 
-### What to reason about
-- Is the captured PC the faulting instruction or an architecture-specific exception location?
-- Which stack is captured and which execution context was active?
-- Are memory regions complete, sampled, compressed, or omitted?
-- Does the dump correspond to the exact firmware image and symbols?
-- Can corrupted stack or heap metadata make unwinding unreliable?
-- Could privacy/security policy prohibit retaining particular memory regions?
+Useful state includes:
+- program counter and stack pointer;
+- general registers and status state;
+- thread list and stacks;
+- loaded-module mappings;
+- selected memory regions;
+- signal/fault metadata;
+- executable and build identifiers.
 
-A dump must distinguish **captured evidence** from **derived interpretation**. Preserve raw values wherever possible.
+The executable must match the crash. A symbol file from another build can produce plausible but false source locations.
 
 ## Embedded implications
-MCUs rarely have the storage capacity for a desktop-sized core. A useful embedded crash record often contains reset/fault reason, PC, SP, link/return state, status registers, selected general registers, task/ISR identity, stack window, event breadcrumbs, and firmware build ID.
+Bare-metal systems can implement a compact crash dump containing exception registers, fault status, stack pointers, a bounded stack window, reset reason, task identity, and selected diagnostic counters. Store it in retention RAM, battery-backed RAM, EEPROM, or a reserved flash region according to product requirements.
 
-Persistent flash storage introduces wear, power-failure risks, and record-integrity requirements. Reserved RAM may survive watchdog resets but not all power cycles.
+The record must be robust against power loss and repeated faults. Include a magic value, format version, length, sequence number, payload checksum/CRC, and build/image identifier. Avoid writing excessive data to flash on every reset because of endurance limits.
 
-### Firmware review angle
-Define a fixed crash-record schema, version it, include a CRC or equivalent integrity check, and ensure the fault handler has bounded execution time. Avoid complex allocation, formatted I/O, or locks in the failure path.
-
-## Edge cases and failure modes
-- **Incomplete capture:** fault handler crashes or watchdog resets before saving state.
-- **Wrong symbols:** a valid PC is mapped against a different build.
-- **Stack corruption:** backtrace is partially or wholly false.
-- **Power loss:** volatile crash state disappears.
-- **Sensitive data:** raw RAM can contain credentials or customer information.
-
-## Example pattern
+### Example crash record
 ```c
 struct crash_record {
     uint32_t magic;
@@ -41,21 +32,31 @@ struct crash_record {
     uint32_t pc;
     uint32_t sp;
     uint32_t status;
-    uint32_t reset_reason;
+    uint32_t reason;
+    uint32_t crc;
 };
 ```
-The structure should have a documented binary schema and integrity mechanism; it is an example of a compact record, not a portable ABI specification.
+The exact register set and ABI are target-specific; the format should be deliberately versioned.
+
+## Edge cases and failure modes
+- A corrupted stack can make unwinding impossible.
+- The crash handler itself can fault and overwrite evidence.
+- Cached or DMA-owned data may not represent the latest state.
+- Reset/power sequencing can erase volatile crash data.
+- An incorrect symbol file creates misleading backtraces.
+- Recursive fault handling can cause watchdog reset before persistence.
 
 ## Verification / debugging
-Force controlled faults in a staging image and verify that the record survives the intended reset type, is not overwritten on normal boot, and can be decoded with the exact build artifacts. Test malformed records and interrupted writes.
+Test crash capture deliberately: null/invalid access where safe, assertion failure, watchdog reset, stack exhaustion, and corrupted-state scenarios. Verify that the crash handler is minimal and uses only facilities known to remain safe after the fault. Validate the stored record after reboot and decode it using the exact build artifact.
 
-During analysis, first validate the record, firmware identity, and raw register state; only then perform symbolic unwinding and source interpretation.
-
-Staff-level questions: What minimum state is required to identify the failure class? How much storage and write time can the fault path consume? Can the record be trusted after partial power loss?
+For hosted systems, retain the core, executable, shared-library versions, and debug symbols together. For firmware, retain the production image and linker map as immutable artifacts for every released build.
 
 ## Staff-level takeaway
-A crash dump is valuable only when it is **self-identifying, integrity-protected, bounded, and symbolizable**. Design it as a durable evidence format, not as an ad-hoc collection of debugger fields.
+A crash dump is only valuable if it preserves the evidence needed to answer **what failed, where, under which build, and with what machine state**. Design crash capture as an observability subsystem with versioning, integrity, bounded resource use, and recovery guarantees—not as an afterthought.
 
 ## Related
 [[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+[[04_Call_stacks]]
+[[05_Registers]]
+[[09_Post_mortem_analysis]]
+[[../84_C_Fault_Containment/00_Chapter_Index]]
