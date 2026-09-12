@@ -1,62 +1,62 @@
 # Atomic flags
 
-> Canonical C topic note — Chapter 44. Atomic flags communicate events between execution contexts without data races when implemented with the C atomic model or an equivalent target primitive.
+> Canonical C topic note — Chapter 44. An atomic flag is a small shared state used to communicate between an ISR and another execution context without a data race. C11 atomics define atomicity and memory ordering; target interrupt mechanisms still determine whether the operation is practical and safe.
 
 ## Definition
-An atomic flag can be read and written atomically and with defined memory-order semantics. `volatile bool` alone does not provide this guarantee. ISO C11 atomics provide `_Atomic` types and `<stdatomic.h>` operations, subject to implementation support.
+A flag such as “event pending” can be set by an ISR and consumed by a task. A `_Atomic` object prevents conflicting accesses from constituting a C data race and can provide defined ordering through the selected memory order.
 
 ## Mechanism and language rules
-Atomic operations prevent conflicting unsynchronized accesses from forming a C data race and can establish ordering relationships. The correct memory order depends on what data the flag publishes or consumes.
+Atomicity is distinct from `volatile`. An atomic load/store can be ordered using `memory_order_relaxed`, `acquire`, `release`, or stronger orders. If the ISR and task exchange only one independent event bit, relaxed operations may be enough; if the flag publishes other data, release/acquire ordering may be required.
 
 ### What to reason about
-- Is only the flag atomic, or is the data it protects also correctly ordered?
-- Is `memory_order_release` used by the producer and `memory_order_acquire` by the consumer where publication is required?
-- Is `volatile` needed separately for MMIO?
-- Is the atomic operation lock-free on the target?
-
-A flag can signal that data is ready, but the data must be published according to the chosen memory-order relationship.
+- Which contexts access the object?
+- Is the object genuinely atomic on the target?
+- Does the flag publish associated data?
+- What memory order is required for that data dependency?
+- Can events be coalesced or lost?
+- Is ISR support for the chosen atomic implementation guaranteed?
 
 ## Embedded implications
-Atomics may compile to a single instruction on simple architectures or require exclusive-access loops/barriers. Some targets may implement certain atomic widths with library routines that have nontrivial latency or may temporarily mask interrupts.
+A flag is cheap, but a single bit can represent only “at least one event” unless the protocol counts events. Repeated interrupts between task polls can therefore be coalesced.
 
 ### Firmware review angle
-For ISR-to-task signaling, select an atomic type and memory order that match the execution model. If the ISR and main context share a ring buffer, the flag alone does not solve buffer ownership or index synchronization.
+Use counters or queues when event multiplicity matters. Verify compiler/runtime support for C11 atomics in the target environment; some implementations may use locks or library calls for non-native atomic widths, which can be unsuitable in an ISR.
 
 ## Edge cases and failure modes
-- Using a non-atomic payload with an atomic flag but no release/acquire relationship.
-- Assuming every atomic width is lock-free.
-- Using `volatile` instead of `_Atomic`.
-- Using sequential consistency everywhere without understanding cost or need.
+- Plain `volatile` flag creates a data race.
+- Flag clears an event that arrived immediately after the read.
+- Multiple events are silently coalesced.
+- Atomic operation is not lock-free and invokes unsuitable runtime code.
+- Associated data is read without acquire ordering.
 
 ## Example pattern
 ```c
 #include <stdatomic.h>
 
-static uint32_t data;
-static atomic_bool ready;
+static _Atomic bool event_pending;
 
-void producer(uint32_t value)
+void IRQ_Handler(void)
 {
-    data = value;
-    atomic_store_explicit(&ready, true, memory_order_release);
+    atomic_store_explicit(&event_pending, true, memory_order_release);
 }
 
-bool consumer(uint32_t *out)
+void service(void)
 {
-    if (!atomic_load_explicit(&ready, memory_order_acquire)) {
-        return false;
+    if (atomic_exchange_explicit(&event_pending, false,
+                                 memory_order_acquire)) {
+        process_event();
     }
-    *out = data;
-    return true;
 }
 ```
-The release/acquire pair publishes `data` to the consumer under the C memory model.
+The exact ISR support and memory-order choice must match the data-publishing contract.
 
 ## Verification / debugging
-Use ThreadSanitizer on supported host tests, inspect generated atomic sequences, and stress the producer/consumer relationship. On target, measure interrupt latency and verify lock-free assumptions where required.
+Stress event bursts, verify no data race under sanitizer-supported host tests, and inspect generated code for target ISR paths. Test whether event coalescing is acceptable and measure atomic operation cost.
+
+Staff-level questions: Is a flag enough to preserve event count? Is release/acquire actually needed? Does the target implement this atomic operation without a hidden lock?
 
 ## Staff-level takeaway
-An atomic flag is useful only when its **memory-order relationship and protected state are designed together**. Atomicity of the flag alone does not make the surrounding protocol correct.
+An ISR flag is a **synchronization protocol**, not merely a variable. Define event multiplicity, memory ordering, target atomic support, and associated-data ownership explicitly.
 
 ## Related
 [[00_Chapter_Index]]
