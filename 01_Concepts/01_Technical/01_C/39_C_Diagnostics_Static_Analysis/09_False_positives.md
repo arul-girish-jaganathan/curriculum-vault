@@ -3,41 +3,24 @@
 > Canonical C topic note — chapter 39.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **False positives**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+A false positive is a tool finding that does not represent a defect under the actual program contract. False positives are inevitable in approximate static analysis; unmanaged noise destroys trust in the tool.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
-
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+Findings may be conservative because the analyzer cannot prove aliasing, ownership, range, or path constraints. A finding can also be technically valid but irrelevant to the product's threat or safety scope.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
-
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+Hardware registers, interrupt paths, generated code, RTOS primitives, and vendor SDKs frequently require analysis models or documented assumptions. The answer should be to improve the model or boundary, not indiscriminately suppress diagnostics.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
-```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
-```
+- Suppressing a whole rule because one case is safe.
+- Copying suppression annotations without understanding them.
+- Ignoring repeated findings until real defects become indistinguishable from noise.
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Classify each finding as defect, justified exception, analyzer limitation, or configuration error. Prefer narrow suppressions with rationale and expiry/review ownership.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+A trusted analyzer is one whose high-severity findings are taken seriously. False-positive management is therefore a safety mechanism, not administrative cleanup.
 
 ## Related
 [[00_Chapter_Index]]
