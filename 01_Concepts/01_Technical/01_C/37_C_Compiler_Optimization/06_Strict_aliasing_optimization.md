@@ -1,44 +1,49 @@
 # Strict-aliasing optimization
 
-> Canonical C topic note — chapter 37.
-
 ## Definition
-C's object-access and effective-type rules restrict which lvalue types may be used to access an object's stored value. Optimizers exploit these rules to infer that certain pointers do not alias. This is often called strict-aliasing optimization.
+**Strict aliasing** is part of C's object-access rules and gives implementations useful assumptions about which lvalue expressions can designate the same stored object. Optimizers exploit those assumptions to keep values in registers, reorder accesses, eliminate loads, and simplify control flow. Violating the underlying language rules can therefore turn into optimization-dependent miscompilation.
+
+## Scope and boundaries
+C permits an object's stored value to be accessed through certain compatible or otherwise permitted lvalue types, including character types for examining object representation. It does not generally permit arbitrary reinterpretation of an object's bytes by dereferencing an unrelated typed pointer. `memcpy`/`memmove`, unions where their semantics apply, and carefully designed serialization are different mechanisms from incompatible typed access.
 
 ## Mechanism and language rules
-Consider:
+A dangerous pattern is:
 
 ```c
-int update(int *a, float *b)
-{
-    *a = 1;
-    *b = 2.0f;
-    return *a;
-}
+float f = 1.0f;
+uint32_t u = *(uint32_t *)&f; /* not a portable type-punning method */
 ```
 
-Under the language's aliasing rules, `int *` and `float *` do not generally designate the same `int` object for a valid access. The compiler may therefore reuse the value `1` rather than reload `*a`. If a program creates an invalid type-punning access, the resulting behavior is not rescued by “but both pointers have the same address.”
+The conversion may produce an inadequately aligned pointer and the dereference violates the permitted access rules. Prefer:
 
-Character types have special access privileges for inspecting object representation. `memcpy` is the conventional portable technique for copying representation between unrelated types; modern C also requires careful reasoning about effective type and object lifetime.
+```c
+uint32_t u;
+memcpy(&u, &f, sizeof u);
+```
+
+when the representation is intentionally copied and the destination type is appropriate.
+
+### `restrict`
+`restrict` provides an additional aliasing contract for a pointer expression and its associated accesses. When used correctly it can unlock optimization. When the caller violates the contract, behavior is undefined; `restrict` is not merely a performance hint.
 
 ## Embedded implications
-Aliasing bugs can become release-only failures and are especially dangerous in drivers, protocol parsers, DMA buffers, and packed data conversion. Disabling strict-aliasing optimization may hide a defect while reducing performance; it does not make every invalid access portable.
+Firmware often manipulates packet buffers, DMA descriptors, register blocks, and packed protocols, making aliasing mistakes common. An apparent byte buffer may not satisfy the alignment or effective-type requirements needed to dereference it as a structure. Use explicit decoding, `memcpy`, correctly aligned storage, or carefully specified object construction patterns.
 
-Use explicit serialization, `memcpy`, unions only where the intended semantics are supported by the target/toolchain policy, or carefully designed typed APIs. DMA and hardware descriptors should have explicit representation and alignment contracts.
+Disabling strict-aliasing optimizations globally can sometimes hide defects but is not a substitute for correcting invalid C. Some embedded codebases intentionally use compiler extensions for type punning; those extensions must be documented and constrained to the supported toolchain.
 
 ## Edge cases and failure modes
-- Casting `uint8_t *` to an unrelated object pointer and dereferencing without a valid object/access model.
-- Assuming `volatile` fixes aliasing.
-- Confusing alignment correctness with effective-type correctness.
-- Treating `-fno-strict-aliasing` as a general safety fix.
-- Forgetting that optimizer assumptions can cross function boundaries with LTO.
+- Casting `uint8_t *` to an unrelated struct pointer and dereferencing without checking alignment or representation.
+- Assuming `char *` permission means every typed reinterpretation is legal.
+- Using `restrict` when buffers can actually overlap.
+- Mixing MMIO register types with unrelated aliases.
+- Relying on `-O0` behavior.
+- Treating a sanitizer-clean result as proof of full aliasing correctness; some aliasing violations are difficult to detect dynamically.
 
 ## Verification / debugging
-Compile with aggressive optimization and sanitizers where supported. Compare aliasing-sensitive code in assembly. Review casts at type boundaries and use static analysis. Test serialization on targets with different alignment and endianness properties.
+Enable strict compiler warnings and optimization diagnostics. Compare behavior under different optimization levels and compilers. Use UBSan where applicable, static analysis, and targeted tests with aliasing and alignment edge cases. Inspect assembly when a value unexpectedly remains cached across a write.
+
+## Performance, memory, timing and power
+Correct alias information can remove redundant loads/stores and improve vectorization and register allocation. Incorrect aliasing assumptions can produce silent data corruption. The cost of a safe `memcpy` is often lower than feared because compilers recognize small fixed-size copies and lower them to efficient loads/stores.
 
 ## Staff-level takeaway
-Aliasing is a semantic contract, not an optimization switch. Establish legal object access first; only then reason about performance consequences.
-
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+Treat aliasing as a **semantic contract**. Prefer representations and APIs that make legal accesses obvious. If a performance optimization depends on non-overlap or a particular object representation, encode and verify that assumption rather than relying on casts that happen to work on one compiler.
