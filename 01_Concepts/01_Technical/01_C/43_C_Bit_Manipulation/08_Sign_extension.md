@@ -1,47 +1,54 @@
 # Sign extension
 
-> Canonical C topic note — Chapter 43. Sign extension preserves a signed value's mathematical value when representing it in a wider signed type by propagating the sign bit.
+> Canonical C topic note — Chapter 43. Sign extension preserves a signed value's numerical meaning when representing it in a wider signed type by extending the sign bit into the newly added high bits.
 
 ## Definition
-A signed `N`-bit value is sign-extended to a wider width by copying its sign bit into the newly added high bits. In C, the safe conceptual operation is conversion from a signed type to a wider signed type when the destination can represent every source value. Raw bit-field extraction requires more care because the extracted field may initially be unsigned.
+For a two's-complement `N`-bit value, a negative value has high bit one; widening it to a larger signed type conceptually fills new high bits with ones. Positive values fill them with zeros. In C, the exact result follows the rules for integer promotions and conversions, not a hand-written assumption about bit patterns.
 
 ## Mechanism and language rules
-Integer promotions and conversions determine the actual C value; they are not merely bit-copy operations. If a small signed integer is promoted to `int`, the result preserves its value. Right-shifting a negative signed integer, however, is implementation-defined, so do not use it as a portable sign-extension primitive without an explicit contract.
+Converting a signed integer to a wider signed integer preserves its value when the destination can represent it. Problems arise when programmers first treat a narrow byte as unsigned, shift it, or convert it through an unintended type.
 
 ### What to reason about
-- What is the source width and signedness?
-- Is the destination wide enough for every value?
-- Is the value a mathematical signed integer or merely a packed bit field?
-- Does integer promotion already perform the required extension?
+- Is the source logically signed or an unsigned bit pattern?
+- What is the source width and destination width?
+- What integer promotions occur?
+- Is the source actually a C signed integer or a serialized field?
+- Is the representation assumption explicitly two's complement where required?
+
+For protocol fields, parse the field width explicitly before interpreting its sign.
 
 ## Embedded implications
-Sign extension matters when decoding signed sensor values, instruction encodings, ADC fields, protocol fields, and hardware registers narrower than the CPU word. Incorrect extension can turn `-1` into a large positive value and break control limits.
+Sign extension appears in ADC values, packed sensor formats, instruction decoding, DSP data, and peripheral registers containing signed subfields. Incorrect extension can turn a negative measurement into a large positive value.
 
 ### Firmware review angle
-Use explicit masks and casts at representation boundaries. For a signed field extracted from a packet, first isolate the field, then convert according to a documented signed representation rather than relying on implementation-specific shifts.
+Separate **bit-pattern extraction** from **numeric interpretation**. Extract an unsigned field first, then apply an explicit sign interpretation with a known field width.
 
 ## Edge cases and failure modes
-- Converting an unsigned field to a signed type when the value is not representable.
-- Assuming right shift of a negative value is portable sign extension.
-- Forgetting integer promotions in expressions involving `int8_t`/`uint8_t`.
-- Confusing two's-complement bit patterns with the complete C portability model.
+- Treating an unsigned byte containing `0xFF` as `-1` without conversion.
+- Shifting a signed value without proving the operation is valid.
+- Sign-extending from the wrong field width.
+- Mixing signed and unsigned arithmetic after extension.
 
 ## Example pattern
 ```c
-int32_t widen(int16_t x)
+static int32_t sign_extend12(uint16_t raw)
 {
-    return (int32_t)x;
+    raw &= 0x0FFFU;
+    if ((raw & 0x0800U) != 0U) {
+        return (int32_t)raw - 0x1000;
+    }
+    return (int32_t)raw;
 }
 ```
-This preserves the value because every `int16_t` value is representable in `int32_t` on implementations providing those exact widths.
-
-For a 12-bit signed protocol field, the representation contract should explicitly define how the sign bit maps to the mathematical range before conversion.
+The arithmetic expresses the signed 12-bit interpretation without relying on a signed shift trick.
 
 ## Verification / debugging
-Test zero, positive maximum, negative one, most-negative value, and field boundary patterns. Compare decoded values against a reference implementation and inspect casts/conversions with compiler warnings enabled.
+Test zero, maximum positive, minimum negative, `-1`, and values around the sign boundary. Compare against a mathematical reference and inspect intermediate types with compiler warnings.
+
+Staff-level questions: Is the input a numeric signed object or a raw bit field? What field width defines the sign bit? Could implicit unsigned conversion change later comparisons?
 
 ## Staff-level takeaway
-Separate **value conversion** from **bit-pattern reconstruction**. Let C's defined integer conversions perform sign extension where appropriate, and make packed-field signedness explicit at the protocol/hardware boundary.
+Sign extension is safest when **representation and numeric interpretation are separated**. Extract the exact field width first, then convert it under an explicit signed-value contract.
 
 ## Related
 [[00_Chapter_Index]]
