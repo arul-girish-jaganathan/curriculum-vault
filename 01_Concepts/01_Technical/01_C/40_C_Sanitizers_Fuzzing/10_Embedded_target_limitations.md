@@ -1,28 +1,41 @@
 # Embedded-target limitations
 
-> Canonical C topic note — chapter 40.
-
 ## Definition
-Sanitizers and fuzzers require runtime instrumentation, memory, execution time, and often operating-system facilities that may not exist on an MCU. Their absence on target does not make them unsuitable; it changes how evidence is collected.
+Sanitizers and fuzzers are powerful, but constrained embedded targets impose limits in address space, RAM, flash, execution speed, I/O, debugging, and runtime support. These limitations determine which testing techniques should run on the MCU and which should run on a host or simulation environment.
+
+## Scope and boundaries
+A host sanitizer build is not equivalent to the target binary. It cannot directly prove MMIO correctness, interrupt behavior, DMA ownership, cache coherency, target alignment faults, or exact ABI behavior. Conversely, target fuzzing can expose hardware-specific defects that host execution cannot reproduce.
 
 ## Mechanism and language rules
-Host instrumentation can validate target-independent C logic. Target testing must cover implementation-specific behavior such as MMIO, interrupts, DMA, alignment, cache/coherency, startup, and actual ABI.
+Use a layered strategy:
+
+```text
+host + sanitizers + fuzzing
+          |
+          v
+target unit/integration tests
+          |
+          v
+hardware-in-loop / fault injection
+```
+
+Keep portable logic isolated from hardware so it can receive high-volume host testing.
 
 ## Embedded implications
-Instrumented images can consume substantial flash/RAM, alter timing, change memory layout, and interfere with watchdog or real-time constraints. Fuzzing on target may therefore be selective rather than continuous.
+Common constraints include insufficient RAM for ASan shadow memory, unavailable sanitizer runtime, slow flash writes for corpus storage, watchdog resets during long fuzz cases, and difficulty collecting stack traces. DMA and peripherals can modify memory without passing through instrumented compiler code.
 
 ## Edge cases and failure modes
-- Assuming host sanitizer results cover target-specific UB.
-- Running instrumentation in timing-critical production-like measurements.
-- Ignoring allocator differences.
-- Testing only valid protocol inputs.
+- Assuming a target sanitizer-clean result covers DMA/hardware accesses.
+- Host and target have different integer widths or alignment.
+- Instrumentation changes real-time behavior.
+- Watchdog or low-power behavior invalidates fuzz execution.
+- Debug UART becomes the bottleneck or changes timing.
 
 ## Verification / debugging
-Partition the test strategy: host sanitizer/fuzz coverage for pure logic, target tests for hardware contracts, and differential tests for representation-sensitive behavior. Document which defect classes each layer can detect.
+Document which defect classes each environment can detect. Use host fuzzing for parsers and algorithms, target tests for hardware contracts, and differential testing for portable outputs. Where target sanitizers are unavailable, add allocator guards, stack canaries, MPU checks, hardware watchpoints, and targeted fault injection where supported.
+
+## Performance, memory, timing and power
+Instrumentation can multiply memory and execution costs, which is often unacceptable on an MCU. Target testing should therefore remain lean and deterministic while host testing provides high-volume exploration.
 
 ## Staff-level takeaway
-Do not ask whether sanitizers “work on the MCU” as a binary question. Ask which semantic boundary is being tested and which evidence is still missing.
-
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+Do not ask “host or target?” Ask **which environment can observe the failure mode?** Build a layered validation architecture so each environment covers the blind spots of the others.
