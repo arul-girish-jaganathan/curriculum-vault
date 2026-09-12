@@ -1,60 +1,56 @@
 # Error propagation
 
-> Canonical C topic note — Chapter 42. Error propagation preserves failure information while returning through abstraction layers. A good design prevents low-level failures from being silently discarded or incorrectly translated.
+> Canonical C topic note — Chapter 42. Error propagation preserves failure meaning while moving it across call boundaries. Good propagation prevents low-level errors from being silently lost or translated into misleading success.
 
 ## Definition
-A caller that cannot handle an error should return, translate, retry, or escalate it according to the contract. Propagation can use return codes, status objects, error enums, or project-specific result structures.
+A lower layer detects a failure; an upper layer decides whether to handle, translate, retry, contain, degrade, or propagate it. Propagation is therefore both a control-flow and architecture decision.
 
 ## Mechanism and language rules
-Every layer should preserve the distinction between the original cause and the local context. Blindly replacing `STATUS_TIMEOUT` with `STATUS_ERROR` loses diagnostic information. Blindly exposing low-level hardware codes can leak implementation details into stable public APIs.
+C provides no exception mechanism. Propagation is normally explicit through return values, output/status structures, `errno`, callbacks, global diagnostic state, or project-specific mechanisms. Each method has different concurrency, lifetime, and observability implications.
 
 ### What to reason about
-- Which failures are recoverable at this layer?
-- Is context needed to understand the failure?
-- Does translation preserve enough information?
-- Are outputs valid after propagation?
+- Who is responsible for handling this failure?
+- Is the error still actionable at the next layer?
+- Does translation preserve root cause and context?
 - Is retry safe and bounded?
+- Has any output/resource state become partially valid?
+- Can the error cross a thread/ISR/asynchronous boundary safely?
 
-A useful pattern is to keep a stable public status domain while attaching a diagnostic cause/context internally.
+Avoid converting every failure into a generic `ERROR`; information loss makes recovery and diagnosis harder.
 
 ## Embedded implications
-Propagation paths often cross driver, middleware, service, and application layers. A UART timeout may become a communication-service failure and eventually a degraded operating mode. Retry loops can consume CPU, increase latency, and prevent watchdog servicing if unbounded.
+Driver failures may need translation into subsystem status while retaining hardware detail for diagnostics. A timeout may mean retry, reset, or permanent degradation depending on the peripheral state.
 
 ### Firmware review angle
-Define ownership of retry policy. The driver should generally report the hardware failure; the service layer decides whether retry is meaningful; the application decides whether degraded operation is acceptable.
+Define an error taxonomy and translation boundaries. Propagation paths should have bounded time and stack usage and must not accidentally turn transient failures into infinite retry loops.
 
 ## Edge cases and failure modes
-- Swallowing an error and returning success.
-- Converting all errors to one generic code.
-- Retrying non-idempotent operations.
-- Infinite retry loops during permanent hardware failure.
-- Losing the original error while adding context.
+- Swallowed error followed by apparent success.
+- Retry of a non-idempotent operation causing duplication.
+- Error translation loses the underlying fault code.
+- Error state stored globally and overwritten by another task.
+- Asynchronous completion reports failure after the caller has released context.
 
 ## Example pattern
 ```c
 status_t service_start(void)
 {
-    status_t st = driver_init();
+    status_t st = driver_start();
     if (st != STATUS_OK) {
-        record_failure(SERVICE_START, st);
-        return st;
+        return map_driver_status(st);
     }
     return STATUS_OK;
 }
 ```
-The diagnostic record adds context without changing the driver's status semantics.
+A useful `map_driver_status()` preserves distinctions required by the service contract rather than collapsing everything to one value.
 
 ## Verification / debugging
-Create tests for every failure injected at each layer and verify the final observable behavior. Test retry limits, timeout propagation, and degraded-mode transitions. Review status mappings as part of interface compatibility.
+Build a failure matrix showing each lower-layer error, its translated value, caller action, and final user/system behavior. Test every path, including timeout, partial completion, retry, reset, and repeated failure.
 
-Staff-level questions:
-- Where is the first layer that can make a meaningful recovery decision?
-- Is error context preserved?
-- Could retry amplify the failure?
-- Does the public API expose implementation details unnecessarily?
+Staff-level questions: Where should this error be handled? What information must survive? Is the propagation path bounded and concurrency-safe? Can the system distinguish transient from terminal failure?
 
 ## Staff-level takeaway
-Error propagation is **information flow plus recovery ownership**. Preserve causality, put retry decisions at the correct abstraction layer, and prevent failures from disappearing at subsystem boundaries.
+Error propagation should preserve **meaning, ownership, and recovery intent**. Define translation boundaries deliberately and retain enough information to diagnose and safely recover from the original failure.
 
 ## Related
 [[00_Chapter_Index]]
