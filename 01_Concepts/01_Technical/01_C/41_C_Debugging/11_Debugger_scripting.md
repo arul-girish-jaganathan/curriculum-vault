@@ -1,55 +1,60 @@
 # Debugger scripting
 
-> Canonical C topic note — Chapter 41. Debugger scripting automates repeatable target inspection and control. It is tooling rather than C syntax, so its correctness depends on the debugger, probe, binary, ABI, memory map, and target state.
+> Canonical C topic note — chapter 41.
 
 ## Definition
-A debugger script is a command sequence or extension that sets breakpoints, inspects registers and memory, evaluates symbols, configures target state, collects traces, or automates repetitive experiments. Environments may expose command languages, Python APIs, GDB/MI, IDE macros, or probe-specific interfaces.
+Debugger scripting automates repetitive inspection and control operations: loading an image, setting breakpoints, dumping memory, collecting registers, walking stacks, checking invariants, and producing crash reports. It turns manual debugging into repeatable evidence collection.
 
 ## Mechanism and language rules
-Scripts operate on compiled artifacts and live machine state. Symbol-based commands depend on debug information; raw addresses depend on the target memory map. A script must therefore encode its assumptions explicitly.
+Debugger commands operate on implementation-level state. A script may evaluate C expressions using debug information, inspect registers, access memory, and control execution. Exact command languages and capabilities are tool-specific.
 
-### What to reason about
-- Does a command merely observe state or mutate it?
-- Does a memory read access side-effecting MMIO?
-- Are addresses derived from symbols or hard-coded?
-- Does the script assume `-O0`, a frame pointer, or a particular ABI?
-- Does it halt execution and alter timing?
-- Is it idempotent after a partial failure?
+A robust script should distinguish:
+- target connection/setup;
+- symbol/image validation;
+- observation;
+- mutation of target state;
+- output formatting;
+- failure handling.
 
-Prefer evidence collection over mutation. When writes are necessary, make them explicit, bounded, and reversible.
+Avoid scripts that silently continue after an image mismatch or invalid memory access.
 
 ## Embedded implications
-Scripts are useful for board bring-up, register validation, memory tests, fault injection, repeated reproduction, and automated capture of CPU context. They can turn a long manual debugger procedure into a deterministic experiment.
+Scripts are especially valuable for fleet debugging and lab regression. A standard fault script can collect PC, SP, LR, status registers, fault-status registers, stack windows, task state, selected globals, and memory-map information in a consistent order.
 
-### Firmware review angle
-Keep important scripts under version control with the firmware/tooling. Record debugger and probe versions. Validate that the running image matches the expected symbol file before issuing address-sensitive commands.
+For boot failures, automate reset, halt-at-entry, vector-table inspection, startup stepping, and register snapshots. For peripheral issues, automate register dumps before and after a transaction while respecting clear-on-read/write-one-to-clear semantics.
+
+### Example workflow
+```text
+connect target
+verify image/build-id
+reset and halt
+read PC/SP/LR/status
+read fault registers
+validate SP region
+save stack window
+symbolize PC
+export timestamped report
+```
+The exact syntax varies by debugger; the workflow is the important reusable artifact.
 
 ## Edge cases and failure modes
-- **Wrong image:** symbols resolve to incorrect addresses.
-- **MMIO side effect:** inspection changes peripheral state.
-- **Timing distortion:** repeated halts hide races.
-- **Version drift:** debugger command behavior changes.
-- **Unsafe writes:** scripts can disable clocks, watchdogs, or protection.
-
-## Example pattern
-```text
-load_symbols(exact_elf)
-assert_symbol("fault_record")
-read_register(PC)
-read_register(SP)
-dump_memory(fault_record, RECORD_SIZE)
-resolve_symbol(PC)
-```
-The exact syntax varies by debugger; the design principle is to validate identity, capture raw state, then symbolize it.
+- Scripts can read destructive MMIO registers.
+- A target may be running while the script assumes it is halted.
+- Reset may invalidate previous symbol or peripheral state.
+- Memory reads can fault or hang on an inaccessible bus region.
+- Automation can accidentally write registers and alter the failure.
+- A script tied to absolute addresses breaks across firmware layouts.
 
 ## Verification / debugging
-Test scripts on known-good and intentionally-faulted images. Check expected symbol addresses, output formats, error handling, and incompatible-image detection. For CI use, prefer machine-readable output and deterministic exit status.
+Version-control scripts alongside the firmware tooling. Include expected architecture, debugger version, image identity, and assumptions. Prefer symbolic names and linker-derived addresses where supported. Test scripts against known-good and injected-fault targets.
 
-Staff-level questions: What assumptions are encoded? Can the script detect a mismatched binary? What state can it mutate? Does automation preserve the timing conditions relevant to the defect?
+For crash collection, emit machine-readable output in addition to human-readable text so results can be compared across builds and devices.
 
 ## Staff-level takeaway
-Debugger automation should make diagnosis **repeatable, reviewable, and evidence-driven**. Once it becomes part of bring-up or production incident response, treat it like production engineering tooling with versioning and tests.
+Debugger scripts are infrastructure, not personal shortcuts. Standardize them around repeatable evidence collection, explicit safety boundaries, build identity, and deterministic output. The payoff is reduced mean time to diagnose and fewer “it worked on my debugger session” conclusions.
 
 ## Related
 [[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+[[08_Core_dumps]]
+[[09_Post_mortem_analysis]]
+[[12_Debugging_production_firmware]]
