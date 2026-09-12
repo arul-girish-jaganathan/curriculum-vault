@@ -1,43 +1,65 @@
 # Out-parameters
 
-> Canonical C topic note — chapter 42.
+> Canonical C topic note — Chapter 42. An out-parameter lets a function write a result into caller-owned storage through a pointer. It is a core C interface pattern because C has no general multiple-return-value syntax.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Out-parameters**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+A parameter such as `T *out` designates caller-provided storage into which the callee writes a result. The API must define preconditions, ownership, initialization, output validity, and failure behavior.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+The pointer value is passed according to the ABI. Dereferencing it requires a valid, appropriately aligned object with sufficient storage and the required lifetime. `const` on input pointers and non-`const` output pointers can make intent explicit.
 
 ### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+- Is `out` allowed to be null?
+- How large must the destination be?
+- Is it fully initialized on success?
+- Is it modified on failure?
+- Can `out` alias an input object?
+- Does the callee retain the pointer after returning?
+
+If the API does not retain the pointer, the caller-owned object's lifetime only needs to cover the call. If the pointer is retained asynchronously, the lifetime and ownership contract becomes substantially stronger.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+Out-parameters avoid returning large structures by value when ABI/code-size constraints make that useful, and they can let callers reuse static buffers. They also make ownership visible at the call boundary.
 
 ### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+For DMA or asynchronous APIs, an out-parameter may actually become an ownership transfer. Document whether the pointer is used synchronously, retained until completion, or returned through a callback.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
+- Passing an uninitialized pointer instead of a pointer to storage.
+- Returning success without initializing the complete output.
+- Partial writes on failure without documenting them.
+- Stack output passed to an asynchronous operation and then going out of scope.
+- Aliasing input/output unexpectedly changes results.
 
 ## Example pattern
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
+status_t parse_u16(const char *text, uint16_t *out)
 {
-    return x;
+    if ((text == NULL) || (out == NULL)) {
+        return STATUS_INVALID_ARG;
+    }
+
+    uint16_t value;
+    if (!parse_internal(text, &value)) {
+        return STATUS_INVALID_DATA;
+    }
+    *out = value;
+    return STATUS_OK;
 }
 ```
+A local temporary gives an atomic “commit on success” behavior for the output.
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Test null pointers, valid storage, failure-before-write, boundary values, aliasing, and asynchronous lifetime. Static analysis should track pointer validity and possible null dereferences.
+
+Staff-level questions:
+- What exactly does success guarantee about the output?
+- Who owns the pointed-to storage before, during, and after the call?
+- Can the function retain the pointer?
+- Is partial output ever observable?
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+An out-parameter is more than `*out = value`; it is a **storage, lifetime, ownership, and validity contract**. Make those dimensions explicit, especially when the operation crosses task, ISR, DMA, or subsystem boundaries.
 
 ## Related
 [[00_Chapter_Index]]
