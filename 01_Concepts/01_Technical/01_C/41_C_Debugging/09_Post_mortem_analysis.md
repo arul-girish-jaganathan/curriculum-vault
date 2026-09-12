@@ -3,44 +3,87 @@
 > Canonical C topic note — chapter 41.
 
 ## Definition
-Post-mortem analysis diagnoses a failure from evidence captured after execution has stopped or the system has reset. The goal is to reconstruct the failure timeline, identify the earliest violated assumption, and produce evidence-backed corrective action.
+Post-mortem analysis diagnoses a failure from evidence captured after execution has stopped, crashed, or reset. Its purpose is to reconstruct the failure timeline, identify the earliest violated invariant, separate symptom from cause, and produce evidence-backed corrective action.
+
+A successful post-mortem answers four questions:
+
+1. What happened?
+2. What evidence proves it?
+3. Which invariant was first violated?
+4. What experiment or reproduction confirms causality?
 
 ## Mechanism and language rules
-Start from facts: build identity, reset/fault reason, PC, stack pointer, registers, logs, timestamps, memory snapshots, and environmental conditions. Map the failing PC to the exact binary, then reconstruct the call path and relevant data flow.
+Start with immutable facts: firmware/build identity, reset reason, PC, SP, registers, fault status, timestamps, task/ISR context, relevant memory, and environmental conditions. Symbolize addresses only against the exact executable and debug artifacts that produced them.
 
-Do not confuse correlation with causation. A crash at `foo()` does not prove `foo()` introduced the defect; it may simply be where earlier memory corruption became fatal.
+For C failures, examine the language-level contracts behind the machine symptom:
 
-For C defects, explicitly consider lifetime, bounds, initialization, integer conversion, aliasing, concurrency, alignment, and undefined behavior. A debugger snapshot is evidence of machine state, not a replacement for language-level reasoning.
+- object lifetime;
+- array bounds and pointer provenance/use;
+- initialization;
+- integer conversion and range assumptions;
+- alignment;
+- effective type/aliasing;
+- data races and atomicity;
+- state-machine invariants;
+- resource ownership.
+
+A crash site is not necessarily a fault site. A corrupted pointer may crash in `memcpy`, while the invalid pointer was produced hundreds of instructions earlier.
+
+### Evidence hierarchy
+Prefer stronger evidence over narrative:
+
+`fault registers/raw state → exact instruction → arguments/state → preceding event sequence → source hypothesis → design/root cause`.
+
+Logs are useful but can be incomplete or observer-perturbed. A debugger snapshot is machine-state evidence, not proof of C-level legality.
 
 ## Embedded implications
-Embedded post-mortem systems must work without a live debugger. Useful fields include reset reason, exception type, PC/LR/SP, task/ISR context, fault-status registers, image ID, boot count, watchdog counters, recent event IDs, and bounded stack/memory windows.
-
 Build a timeline such as:
-`boot → configuration → event A → buffer allocation/ownership → event B → fault → reset → crash record readout`.
 
-This often exposes sequencing errors that a single backtrace cannot.
+`boot → configuration → event A → ownership transfer → interrupt/DMA activity → event B → invariant violation → fault/reset → crash capture`
+
+Include asynchronous agents explicitly. A race involving an ISR or DMA controller can invalidate a simplistic “last C statement executed” story.
 
 ### Example reasoning
-If a faulting PC is in `memcpy`, do not stop at “memcpy crashed.” Verify the source/destination addresses, length, object bounds, ownership, and the instruction that produced those arguments. Then find the earlier operation that supplied the invalid range.
+If the PC lands inside a copy routine, inspect the source address, destination address, and length at the faulting instruction. Then determine:
+
+```text
+Was the address aligned/valid?
+Was the object alive?
+Was the length derived from a checked source?
+Who owned the buffer?
+Could DMA/ISR/another core change it concurrently?
+Where did the invalid argument first originate?
+```
+
+Only after answering those questions should the copy routine itself be considered causal.
 
 ## Edge cases and failure modes
-- Crash data may itself be corrupted by stack overflow.
-- Logs can be misleading if timestamps wrap or clocks stop during low-power states.
-- Optimized code may make source variables unavailable.
-- Multiple faults can overwrite the original failure record.
-- Watchdog resets may leave no direct fault PC.
-- Logging can alter timing and hide races.
+- Stack corruption destroys the evidence used for unwinding.
+- A watchdog reset leaves no ordinary fault PC.
+- Multiple resets overwrite the original crash record.
+- Logs can reorder events because of buffering or asynchronous transport.
+- Timestamps can wrap or stop across sleep/reset transitions.
+- Instrumentation can change timing and hide races.
+- Optimized code can eliminate intuitive source variables.
+- The crash handler can itself fault or deadlock.
 
 ## Verification / debugging
-Preserve immutable artifacts: executable, symbols, map file, compiler/toolchain version, configuration, and source revision. Create a decoder for crash records and test it against known injected faults. Maintain a normalized failure signature based on build ID, fault type, PC region, and key state rather than relying on free-form log text.
+Preserve the executable, symbols, linker map, compiler/toolchain information, configuration, hardware revision, and source revision together with the failure artifact.
 
-When analyzing a defect, write an explicit chain: **symptom → observation → hypothesis → experiment → result → root cause**. Record rejected hypotheses as well.
+Create a reproducible decoder and inject known faults to verify that it identifies the intended PC, register frame, and memory window. Normalize failure signatures around build ID, fault class, PC range, and selected state so large fleets can be clustered.
+
+Document the reasoning chain:
+
+`observation → hypothesis → experiment → result → conclusion`
+
+Include rejected hypotheses; they prevent teams from repeatedly exploring disproven explanations.
 
 ## Staff-level takeaway
-Good post-mortem debugging scales beyond one engineer's debugger session. The architecture should make failures reproducible, identifiable, decodable, and comparable across field units. The objective is not merely to locate the crash but to identify the first broken invariant and prevent recurrence.
+Post-mortem analysis is a system for converting failure data into causal knowledge. The highest-value output is not “crashed in function X” but **the earliest broken invariant, the evidence proving it, and a preventive design change that makes the failure impossible or diagnosable**.
 
 ## Related
 [[00_Chapter_Index]]
 [[08_Core_dumps]]
 [[10_Fault_localization]]
 [[12_Debugging_production_firmware]]
+[[../29_C_Behavior_Categories/00_Chapter_Index]]
