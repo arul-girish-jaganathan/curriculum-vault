@@ -1,31 +1,45 @@
 # Optimization-safe C
 
-> Canonical C topic note — chapter 37.
-
 ## Definition
-Optimization-safe C is code whose correctness follows from the language, documented implementation contracts, and explicit hardware/concurrency contracts rather than from a particular optimizer's current behavior.
+**Optimization-safe C** is C whose behavior remains correct when a conforming compiler applies aggressive optimization. The goal is not to prevent optimization; it is to express object lifetime, aliasing, overflow assumptions, volatility, concurrency, ownership, and hardware interaction in ways the compiler is permitted to understand.
+
+## Scope and boundaries
+Optimization-safe code is well-defined code. It avoids relying on undefined behavior, unspecified evaluation order, accidental timing, debugger effects, or undocumented compiler behavior. Where implementation extensions are necessary, they are isolated and documented as toolchain contracts.
 
 ## Mechanism and language rules
-Core practices are: eliminate undefined behavior; respect object lifetime, bounds, alignment and aliasing; use correct integer types; establish sequencing; distinguish `volatile` from atomics; and document implementation extensions.
+Core practices include:
 
 ```c
-bool ready = atomic_load_explicit(&state, memory_order_acquire);
+/* Express intent instead of relying on optimizer folklore. */
+static bool ready(const volatile uint32_t *status)
+{
+    return (*status & 1u) != 0u;
+}
 ```
 
-A correct synchronization primitive gives the compiler and hardware the information needed for concurrent correctness. Replacing it with “the compiler probably won't reorder this” is not a contract.
+Use correct types, bounds, lifetime, alignment, and synchronization. Use `restrict` only when its no-alias contract is true. Use `_Atomic` and explicit memory orders for C concurrency. Use `volatile` for required volatile accesses, not as a substitute for synchronization.
+
+### Avoid optimizer-dependent tricks
+Do not depend on signed overflow wrapping, reading uninitialized objects, invalid pointer arithmetic, incompatible type punning, or “empty” delay loops. Such code may change behavior dramatically at higher optimization levels.
 
 ## Embedded implications
-Use volatile for genuine externally observable objects such as MMIO, atomics/RTOS primitives for shared state, explicit barriers for hardware ordering, and fixed-width types where representation matters. Keep timing-critical requirements measurable rather than encoded as accidental instruction counts.
+Optimization-safe firmware should survive changes in `-O0`/`-O2`/`-Os`, LTO, compiler version, and target configuration without semantic surprises. Hardware access must be specified at the appropriate abstraction layer: C volatile semantics, compiler barriers, CPU barriers, cache maintenance, DMA ownership, and peripheral requirements are separate contracts.
+
+Keep timing requirements outside the assumption that a source loop or function consumes a fixed number of cycles. Use timers, hardware capture, RTOS scheduling primitives, or measured execution budgets.
 
 ## Edge cases and failure modes
-Common symptoms include release-only crashes, infinite polling loops, stale shared data, incorrect peripheral sequencing, and optimized-away diagnostics. Disabling optimization is generally a diagnostic experiment, not a fix.
+- “Fixing” a race with volatile.
+- Casting arbitrary bytes to a structure without alignment/representation analysis.
+- Using `memcpy` into an object while ignoring lifetime or effective-type requirements.
+- Assuming `const` means compile-time constant.
+- Assuming `inline` means inlined.
+- Assuming an optimizer setting is a correctness mechanism.
 
 ## Verification / debugging
-Run aggressive warnings, static analysis, sanitizers, and tests on host builds. Build target firmware at production optimization. Inspect assembly for hardware-sensitive functions and measure cycle counts, stack, image size, and interrupt latency.
+Run warnings at a high level, static analysis, sanitizers on host builds, unit tests, boundary tests, and optimized production builds. Compare compiler versions when upgrading. Inspect assembly for critical paths and map files for placement. Use hardware tests for MMIO, DMA, cache, interrupt, and timing behavior.
+
+## Performance, memory, timing and power
+Well-defined code gives the compiler freedom to remove redundant work, propagate constants, vectorize, inline, and allocate registers effectively. This often produces better performance than manually restricting optimization. Excessive barriers, volatile qualifiers, aliasing ambiguity, and opaque interfaces can unnecessarily block those improvements.
 
 ## Staff-level takeaway
-The goal is not to write code that survives one compiler. The goal is to write code whose assumptions are explicit enough that multiple conforming compilers, optimization levels, and target configurations preserve the intended behavior.
-
-## Related
-[[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+The best optimization-safe code makes **the real contract explicit and the false assumptions impossible**. Establish correctness first, then optimize measured bottlenecks. If a transformation appears to break valid code, preserve the minimal reproducer and investigate the language rule, compiler behavior, ABI, and target hardware separately.
