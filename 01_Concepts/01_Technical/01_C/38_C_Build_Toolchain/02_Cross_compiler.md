@@ -3,41 +3,26 @@
 > Canonical C topic note — chapter 38.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Cross compiler**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+A cross compiler runs on one host while producing code for a different target architecture or operating environment. Embedded development is predominantly cross-compilation because the build workstation and MCU differ.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
-
-### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+The toolchain normally includes compiler, assembler, linker, headers, startup/runtime objects, and target libraries. Host and target are distinct concepts: the compiler executes on the host, while the generated binary executes on the target. `sizeof`, integer widths, alignment, endianness, ABI, and available headers/libraries therefore follow the target implementation.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
-
-### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+Cross builds must select the correct CPU, instruction set, FPU/ABI, memory model, linker script, startup files, and libc. Accidentally using host headers or libraries can compile successfully but generate an unusable image.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
-
-## Example pattern
-```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
-{
-    return x;
-}
-```
+- Host `sizeof(long)` assumptions leaking into target code.
+- Wrong `-mcpu`/FPU options producing illegal instructions.
+- Mixing target and host objects.
+- Executing target binaries during the build without an emulator.
+- Non-reproducible SDK paths or environment variables.
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Print the complete compiler command line and target triple. Inspect object attributes, ELF headers, symbol tables, and final image metadata. Run a trivial target program and a compile-time ABI probe containing `sizeof`, `_Alignof`, and integer-width checks.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+Treat cross compilation as a typed pipeline: host tools produce target artifacts under a precisely defined ABI and sysroot. Every stage must agree on the same target contract.
 
 ## Related
 [[00_Chapter_Index]]
