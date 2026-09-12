@@ -1,54 +1,52 @@
 # Fault localization
 
-> Canonical C topic note — Chapter 41. Fault localization narrows a failure from symptom to the earliest violated invariant or smallest defensible causal region. The instruction where a fault surfaces is often not where the defect originated.
+> Canonical C topic note — chapter 41.
 
 ## Definition
-Fault localization is the evidence-driven process of identifying where and when incorrect state or behavior was introduced. A buffer overrun may corrupt a pointer, and the pointer may fault thousands of instructions later. Localization therefore means finding the earliest useful causal boundary, not merely the final crash site.
+Fault localization narrows a failure from a broad symptom to the smallest code, state transition, or hardware interaction responsible for violating an expected invariant. It is different from simply identifying the crash site.
 
 ## Mechanism and language rules
-Use a narrowing loop: establish the symptom, define invariants, capture state, divide the candidate region, add the least-perturbing observation, reproduce, and repeat. C semantics determine whether candidate operations are defined; compiler transformations determine the machine-level path.
+Use a hypothesis-driven process. Define the observable symptom, identify invariants, collect evidence, and bisect the execution path. For C, useful invariants include pointer validity, buffer bounds, object lifetime, ownership, initialization, state-machine legality, integer ranges, alignment, and synchronization.
 
-### What to reason about
-- What invariant was first violated?
-- Who owned the object immediately before corruption?
-- Is the failure deterministic, probabilistic, load-dependent, or timing-dependent?
-- Does the fault address match the instruction's access size and operands?
-- Could UB, a data race, lifetime error, DMA write, or hardware fault explain the same symptom?
-- Does instrumentation change the schedule or memory layout?
+A useful distinction is:
+- **failure site:** where the system becomes observably wrong;
+- **fault site:** where the invalid action occurs;
+- **root cause:** the design/process condition that allowed it.
 
-Binary search over execution stages is often effective: record bounded checkpoints and identify the first checkpoint after which the invariant fails.
+Example: a HardFault in `memcpy` may be the failure site; the fault may be an invalid length computed earlier; the root cause may be a protocol parser lacking a checked length invariant.
 
 ## Embedded implications
-Use GPIO markers, event IDs, monotonic counters, watchdog breadcrumbs, trace, and persistent crash records when breakpoints are too intrusive. DMA and interrupts require treating memory ownership as part of the causal graph because the writer may not appear in the current C stack.
+Localization must account for asynchronous agents: interrupts, DMA, peripherals, other cores, watchdogs, and power transitions. A value can become corrupt without a corresponding C statement in the current thread.
 
-### Firmware review angle
-Instrumentation must have a defined CPU, RAM, flash, bandwidth, and latency budget. Prefer fixed-size binary events over formatted logs in hard real-time paths. Make diagnostic builds selectable without accidentally changing unrelated optimization or scheduling assumptions.
+Useful techniques include binary search over revisions, feature flags, tracepoints, watchpoints, guard patterns, CRCs, GPIO timing markers, fault injection, and controlled reproduction. For timing bugs, preserve event ordering and latency information rather than adding heavy logging.
+
+### Example
+```c
+if (len <= sizeof(rx_buf)) {
+    memcpy(rx_buf, src, len);
+}
+```
+If `len` is corrupt, the key question becomes where `len` first became invalid—not merely whether this check exists.
 
 ## Edge cases and failure modes
-- **Crash site is downstream:** earlier memory corruption is the actual defect.
-- **Heisenbug:** instrumentation removes or creates the failure.
-- **Counter wrap:** naive timestamp comparisons become wrong.
-- **Multiple faults:** the first fault triggers a secondary watchdog or reset fault.
-- **Optimization:** source stepping hides the actual instruction boundaries.
-
-## Example pattern
-```c
-ASSERT(buffer != NULL);
-ASSERT(length <= BUFFER_CAPACITY);
-record_event(EVENT_BEFORE_COPY, length);
-copy_payload(buffer, data, length);
-record_event(EVENT_AFTER_COPY, length);
-```
-The important evidence is whether the invariant was already false before the copy and whether the bound corresponds to the real destination capacity.
+- The first visible symptom may be far downstream from corruption.
+- Instrumentation can perturb races and timing.
+- Reproduction may depend on optimization, memory placement, or interrupt load.
+- A debugger stop can suppress the failure.
+- Overly broad logging can obscure the causal sequence.
+- Fixing the symptom can leave the violating invariant intact.
 
 ## Verification / debugging
-For every experiment, write a hypothesis and a falsifiable prediction. Correlate source, disassembly, registers, stack, event history, ownership, and hardware activity. Once localized, encode the discovered invariant as a test, assertion, static-analysis rule, or design contract.
+Create a minimal reproduction. Capture before/after values around the suspected transition. Use assertions and sanitizers on host builds, static analysis for structural defects, watchpoints for CPU writes, and hardware trace/instrumentation for asynchronous behavior.
 
-Staff-level questions: What is the earliest proven bad state? Which experiment separates competing hypotheses? What is the least perturbing measurement? How can the root cause be prevented from recurring?
+For regressions, use `git bisect` with a deterministic test. For nondeterministic failures, classify runs statistically and identify which conditions increase failure probability. Verify the proposed root cause by making one controlled change that removes the failure and, ideally, by injecting the suspected fault to reproduce the same signature.
 
 ## Staff-level takeaway
-Good localization finds the **first violated invariant**, not merely the last instruction executed. The Staff-level outcome is a reproducible mechanism plus a durable prevention or detection strategy.
+Fault localization is an evidence pipeline. Senior engineers reduce uncertainty systematically rather than making increasingly complex guesses. The strongest conclusion explains the symptom, identifies the earliest invalid transition, names the violated invariant, and has an independent experiment that confirms causality.
 
 ## Related
 [[00_Chapter_Index]]
-[[../00_Complete_Topic_Map]]
+[[09_Post_mortem_analysis]]
+[[11_Debugger_scripting]]
+[[../39_C_Diagnostics_Static_Analysis/00_Chapter_Index]]
+[[../40_C_Sanitizers_Fuzzing/00_Chapter_Index]]
