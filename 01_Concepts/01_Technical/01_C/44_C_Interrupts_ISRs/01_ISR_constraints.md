@@ -1,53 +1,54 @@
 # ISR constraints
 
-> Canonical C topic note — Chapter 44. An interrupt service routine (ISR) executes in an execution context imposed by the target interrupt architecture. ISO C does not define ISRs, interrupt attributes, interrupt priorities, or latency semantics.
+> Canonical C topic note — Chapter 44. An interrupt service routine is hardware-triggered execution with target-specific entry/exit rules and strict latency, stack, concurrency, and API constraints. ISO C does not define ISRs.
 
 ## Definition
-An ISR is code entered asynchronously in response to a hardware/software interrupt. The target ABI/compiler defines how the handler is declared and how context is saved/restored. The C body must obey stronger constraints than ordinary task code because it can interrupt arbitrary program state.
+An ISR executes in response to an interrupt source. The CPU and interrupt controller determine recognition, priority, context stacking, masking, nesting, and return semantics; the compiler provides the required interrupt calling convention through target-specific mechanisms.
 
 ## Mechanism and language rules
-An ISR may run with interrupts masked or partially enabled, on a dedicated exception stack, or using the interrupted stack. Hardware may automatically save registers and status state. Compiler attributes can change prologue/epilogue generation and must match the startup/vector-table mechanism.
+The ISR body is C code, but its calling convention differs from an ordinary function on many targets. Entry may save architectural registers automatically; compiler-generated prologue/epilogue may save additional state. The handler must obey the target ABI and interrupt declaration rules.
 
 ### What to reason about
-- What state is automatically saved by hardware?
-- Which registers does the ISR compiler convention preserve?
-- Can the ISR nest or be preempted?
-- Which shared objects can it access?
-- Is every access atomic and correctly synchronized?
-- Can the ISR block, allocate, or call non-reentrant code?
+- Which hardware context is saved automatically?
+- What registers/flags must the compiler preserve?
+- What interrupts remain enabled during the handler?
+- Which shared objects can the ISR access?
+- Are operations bounded and nonblocking?
+- Are all transitive callees ISR-safe?
 
-`volatile` may be required for MMIO or certain shared flags, but it is not a general substitute for atomicity or synchronization.
+`volatile` is not a substitute for atomicity, ordering, or mutual exclusion.
 
 ## Embedded implications
-ISR execution consumes latency budget, stack, CPU time, and potentially power. Long handlers increase worst-case interrupt latency and can cause lower-priority interrupts to miss deadlines.
+Long handlers increase interrupt latency and can cause FIFO overflow, missed deadlines, or interrupt storms. Dynamic allocation, blocking calls, unbounded loops, formatted logging, and non-reentrant library functions are generally unsuitable unless the platform explicitly provides safe variants.
 
 ### Firmware review angle
-Keep ISR work bounded and minimal. Move parsing, formatting, allocation, and complex state machines into deferred context unless the architecture explicitly requires otherwise.
+Review the entire call graph and hardware interaction. Define a maximum execution time, maximum stack consumption, nesting policy, shared-state protocol, and deferred-work mechanism.
 
 ## Edge cases and failure modes
-- Calling a blocking RTOS API from an ISR.
-- Using a non-reentrant library function from interrupt context.
-- Updating multiword shared state without atomicity.
-- Assuming interrupt entry saves all registers used by ordinary C.
-- Failing to acknowledge/clear the source, causing an interrupt storm.
+- Incorrect interrupt attribute corrupts return state.
+- ISR calls a function that waits for an event it has prevented from running.
+- Long critical sections cause missed interrupts.
+- Shared multi-byte state is read non-atomically.
+- Fault handler has insufficient stack.
 
 ## Example pattern
 ```c
-static volatile bool rx_pending;
-
 void UART_IRQHandler(void)
 {
-    clear_rx_irq();
-    rx_pending = true;
+    uint32_t status = UART_STATUS;
+    UART_CLEAR = status;
+    uart_event_push_from_isr(status);
 }
 ```
-The main/deferred context should perform substantial processing according to the system's synchronization rules.
+The exact declaration, register semantics, and queue primitive are target-specific.
 
 ## Verification / debugging
-Measure entry-to-exit cycles under worst-case conditions, including nesting. Review compiler-generated ISR prologue/epilogue and stack use. Test interrupt storms, simultaneous sources, and recovery from malformed peripheral state.
+Measure worst-case latency and stack use under maximum interrupt rates. Review every transitive callee for blocking, allocation, locking, and reentrancy. Test interrupt storms and nested handlers.
+
+Staff-level questions: What is the maximum interrupt-off time? What is the longest ISR path? What hardware events can arrive concurrently? Where is deferred work executed?
 
 ## Staff-level takeaway
-An ISR is a **hardware/ABI execution boundary**, not merely a fast C function. Its contract must cover context, latency, stack, shared-state synchronization, peripheral acknowledgement, and permitted callees.
+An ISR is a **hardware-facing concurrency boundary**. Keep it short, bounded, context-correct, and explicit about ownership; defer substantial work to normal execution context.
 
 ## Related
 [[00_Chapter_Index]]
