@@ -1,43 +1,53 @@
 # Minimal ISR work
 
-> Canonical C topic note — chapter 44.
+> Canonical C topic note — Chapter 44. ISR work should be minimized to preserve interrupt latency, stack capacity, scheduler responsiveness, and system determinism.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Minimal ISR work**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+A minimal ISR acknowledges the interrupt, captures the smallest necessary state, and signals deferred processing. The exact acceptable work depends on latency and safety requirements, but unbounded processing is generally inappropriate.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+An ISR interrupts ordinary execution and may execute between any two points permitted by the hardware. Therefore it should avoid assumptions about what shared state is temporarily consistent unless the protocol guarantees them.
 
 ### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+- Interrupt entry/exit overhead.
+- Worst-case handler execution time.
+- Nesting and priority effects.
+- Shared-state atomicity and ordering.
+- Peripheral acknowledgement timing.
+- Whether a called API is ISR-safe.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+Long ISRs increase worst-case latency for other interrupts and can cause FIFO overflow, missed sampling deadlines, motor-control jitter, or watchdog problems. Stack usage must include ISR nesting on top of task stack use where applicable.
 
 ### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+Use the ISR for capture and acknowledgement; move parsing, logging, protocol handling, and heavy computation to deferred context. Measure worst-case execution rather than relying on average timing.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
+- Clearing an interrupt too late causes repeated entry.
+- Clearing it too early loses an event.
+- Doing formatted logging from the ISR blocks or consumes excessive stack.
+- Calling a mutex/blocking API deadlocks or corrupts scheduler state.
+- Assuming one interrupt corresponds to one event when hardware coalesces events.
 
 ## Example pattern
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
+static volatile uint32_t rx_snapshot;
+static volatile bool rx_pending;
+
+void RX_IRQHandler(void)
 {
-    return x;
+    rx_snapshot = UART_RX_REG;
+    clear_rx_irq();
+    rx_pending = true;
 }
 ```
+The deferred context should process the snapshot under an appropriate synchronization protocol.
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Measure minimum/maximum/percentile ISR duration, interrupt-to-service latency, and nesting depth. Stress with maximum event rates and simultaneous higher-priority interrupts.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+“Minimal” means **bounded and sufficient**, not merely short in source lines. Design the ISR/deferred boundary around measurable latency, event-loss behavior, ownership, and stack constraints.
 
 ## Related
 [[00_Chapter_Index]]
