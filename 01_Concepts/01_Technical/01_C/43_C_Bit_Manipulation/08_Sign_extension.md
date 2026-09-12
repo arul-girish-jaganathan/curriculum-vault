@@ -1,43 +1,47 @@
 # Sign extension
 
-> Canonical C topic note — chapter 43.
+> Canonical C topic note — Chapter 43. Sign extension preserves a signed value's mathematical value when representing it in a wider signed type by propagating the sign bit.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Sign extension**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+A signed `N`-bit value is sign-extended to a wider width by copying its sign bit into the newly added high bits. In C, the safe conceptual operation is conversion from a signed type to a wider signed type when the destination can represent every source value. Raw bit-field extraction requires more care because the extracted field may initially be unsigned.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+Integer promotions and conversions determine the actual C value; they are not merely bit-copy operations. If a small signed integer is promoted to `int`, the result preserves its value. Right-shifting a negative signed integer, however, is implementation-defined, so do not use it as a portable sign-extension primitive without an explicit contract.
 
 ### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+- What is the source width and signedness?
+- Is the destination wide enough for every value?
+- Is the value a mathematical signed integer or merely a packed bit field?
+- Does integer promotion already perform the required extension?
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+Sign extension matters when decoding signed sensor values, instruction encodings, ADC fields, protocol fields, and hardware registers narrower than the CPU word. Incorrect extension can turn `-1` into a large positive value and break control limits.
 
 ### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+Use explicit masks and casts at representation boundaries. For a signed field extracted from a packet, first isolate the field, then convert according to a documented signed representation rather than relying on implementation-specific shifts.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
+- Converting an unsigned field to a signed type when the value is not representable.
+- Assuming right shift of a negative value is portable sign extension.
+- Forgetting integer promotions in expressions involving `int8_t`/`uint8_t`.
+- Confusing two's-complement bit patterns with the complete C portability model.
 
 ## Example pattern
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
+int32_t widen(int16_t x)
 {
-    return x;
+    return (int32_t)x;
 }
 ```
+This preserves the value because every `int16_t` value is representable in `int32_t` on implementations providing those exact widths.
+
+For a 12-bit signed protocol field, the representation contract should explicitly define how the sign bit maps to the mathematical range before conversion.
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Test zero, positive maximum, negative one, most-negative value, and field boundary patterns. Compare decoded values against a reference implementation and inspect casts/conversions with compiler warnings enabled.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+Separate **value conversion** from **bit-pattern reconstruction**. Let C's defined integer conversions perform sign extension where appropriate, and make packed-field signedness explicit at the protocol/hardware boundary.
 
 ## Related
 [[00_Chapter_Index]]
