@@ -3,66 +3,102 @@
 > Canonical C topic note — chapter 41.
 
 ## Definition
-Source-level debugging maps machine execution back to C source using debug information such as DWARF. It lets an engineer inspect source variables, frames, expressions, and control flow while the CPU executes instructions. The mapping is a debugging aid, not part of ISO C semantics: the compiler is free to transform code as long as the observable behavior remains valid under the language rules.
+Source-level debugging is the practice of observing and controlling machine execution while presenting the evidence in terms of C source code. A debugger combines the executable image with debug information—commonly DWARF—to map program counters, machine instructions, types, source lines, stack frames, and variable locations.
+
+Source-level debugging is a toolchain facility, not an ISO C language feature. ISO C defines the abstract execution semantics; the compiler and debugger must reconstruct enough correspondence between source intent and generated code to make debugging useful.
 
 ## Mechanism and language rules
-A compiler emits executable code plus debug metadata. The debugger uses symbols, line tables, type information, frame information, and variable-location descriptions to answer questions such as “which source line owns this PC?” and “where is `x` currently stored?”
+A useful mental model is:
 
-A source variable may be:
-- in a register;
-- in a stack slot;
-- optimized into another expression;
-- constant-propagated;
-- split across locations;
-- eliminated because it has no observable effect.
+`C source → preprocessing → compilation → optimization → instruction selection → linking → executable image + debug information → debugger view`
 
-Therefore a debugger displaying `x = 10` does not mean a memory location containing `10` necessarily exists. A source line can correspond to several instruction ranges, and one instruction can represent several source operations after optimization.
+Debug information can contain line tables, lexical scopes, type descriptions, symbol information, call-frame information, and variable-location expressions. The debugger uses these to answer questions such as:
 
-### Compile-time versus runtime
-Debug information normally does not change the C abstract machine. Compiler options such as `-g`, optimization level, frame-pointer policy, link-time optimization, and debug-info format determine how accurately a debugger can reconstruct source intent.
+- Which source location corresponds to the current PC?
+- What function/frame is active?
+- Where is object `x` currently located?
+- What source type describes these bytes?
+- Which machine instructions implement this statement?
+
+A source object is not guaranteed to exist as a stable RAM location. The compiler may place it in a register, recompute it, merge it with another value, split its lifetime across several locations, constant-propagate it, or eliminate it completely when no observable behavior requires it.
+
+### Source lines are not execution steps
+One source statement can compile to many instructions. Conversely, several source statements may share or collapse onto a small instruction range. Instruction scheduling, common-subexpression elimination, inlining, tail calls, and dead-code elimination can make source stepping appear non-linear.
+
+### Optimization and the C abstract machine
+The debugger is not a second execution engine. When undefined behavior occurs, the compiler is permitted to assume the invalid case does not happen and may transform code in ways that make intuitive source stepping misleading. Debugging must therefore distinguish:
+
+`language contract violation` → `optimizer consequence` → `observed machine state`.
+
+### Important compiler/debug options
+Typical toolchain controls include:
+
+```text
+-g                      emit debug information
+-O0 / -Og / -O2 / -O3   select optimization level
+-fno-omit-frame-pointer retain a conventional frame chain where supported
+-g3                     include richer macro/debug detail in toolchains that support it
+```
+
+Exact options and debug formats are compiler-specific. A reproducible debug session requires the exact binary, symbols, compiler version, flags, linker script, and relevant generated artifacts.
 
 ## Embedded implications
-For MCU firmware, source-level debugging crosses the boundary between C and hardware state. Inspect:
-- stack and heap regions from the linker map;
-- MMIO registers using the debugger's target-aware views;
-- interrupt context and exception frames;
-- peripheral ownership and DMA buffers;
-- memory regions with different cache, protection, or access properties.
+For MCU firmware, source-level debugging crosses directly into hardware state. Correlate C objects with:
 
-A halt can itself perturb the system: watchdogs may expire, peripherals may continue running, timing relationships disappear, and an interrupt race may vanish. Debug builds can also alter code placement and timing.
+- linker-map regions for `.text`, `.rodata`, `.data`, `.bss`, stack, heap, and retained RAM;
+- MMIO register definitions and actual target addresses;
+- exception and interrupt entry frames;
+- DMA descriptors and buffers;
+- MPU/MPU-like region permissions and cache attributes where applicable;
+- boot stage and image slot information.
+
+A halt is an invasive experiment. Depending on the target, timers, watchdogs, DMA engines, peripherals, other cores, and external devices can continue operating. Consequently, a bug caused by a race, timeout, or hardware interaction may disappear or change under a debugger.
 
 ### Example
 ```c
 static uint32_t checksum(const uint8_t *p, size_t n)
 {
     uint32_t sum = 0U;
-    for (size_t i = 0; i < n; ++i)
+    for (size_t i = 0; i < n; ++i) {
         sum += p[i];
+    }
     return sum;
 }
 ```
-At `-O0`, `sum`, `i`, and `p` often have obvious locations. At higher optimization, `i` may live in a register and `sum` may never be materialized in RAM.
+At low optimization the debugger may show `p`, `n`, `i`, and `sum` as obvious variables. At higher optimization, `p` may live in a register, `i` may be folded into pointer arithmetic, and `sum` may remain solely in a register. The source view is therefore an interpretation of instruction state, not proof that identical C objects exist physically.
 
 ## Edge cases and failure modes
-- “Variable optimized out” is not evidence of a compiler bug.
-- Stepping can appear to jump backward or skip lines because of instruction scheduling and line-table ranges.
-- Inlined functions may create multiple logical frames.
-- Undefined behavior can make debugger observations misleading because the compiler no longer has to preserve intuitive execution.
-- Reading a volatile MMIO register in a debugger can have hardware side effects.
-- Inspecting invalid pointers may trigger a bus fault on the target.
-- A stale ELF/image mismatch makes every source-level observation suspect.
+- `variable optimized out` is usually a property of code generation, not evidence of corrupted RAM.
+- An ELF/image mismatch invalidates line numbers, symbols, and addresses.
+- Inlined functions can produce inline frames rather than ordinary call frames.
+- Tail-call optimization can remove an expected caller frame.
+- Undefined behavior can invalidate assumptions about source order and values.
+- Reading a volatile MMIO register from a debugger can have hardware side effects.
+- A debugger expression can execute target-side code or trigger memory reads that were not part of the original execution.
+- Memory might be inaccessible because the processor is in a different privilege/security state.
+- LTO may move code and merge functions across translation-unit boundaries.
 
 ## Verification / debugging
-Use a reproducible binary and record the exact compiler, flags, linker script, image hash, and debug-symbol file. Confirm the PC belongs to the expected image before interpreting a line number. Compare source view with disassembly when a variable or branch behaves unexpectedly.
+Use a disciplined evidence chain:
 
-Useful evidence includes compiler warnings, sanitizer runs on host builds, debugger watch expressions, disassembly, map files, trace timestamps, and target fault registers.
+1. Freeze the exact firmware image and symbol file.
+2. Verify image hash/build ID and reset/boot stage.
+3. Establish the faulting PC and exception context.
+4. Compare source view with disassembly when behavior is surprising.
+5. Inspect registers, stack memory, and relevant MMIO state.
+6. Check compiler diagnostics and sanitizer results on a host reproduction.
+7. Use trace, instrumentation, or a crash record when halting changes timing.
+
+For recurring failures, archive the executable and debug metadata with the firmware artifact. A source commit alone is insufficient when compiler versions, flags, linker scripts, generated headers, or link-time layout can change addresses and optimization.
 
 ## Staff-level takeaway
-Treat source-level debugging as a reconstruction problem: **source intent → compiler transformation → instructions → hardware state**. When those layers disagree, do not immediately trust the source view. Establish the exact binary, optimization assumptions, ABI/frame rules, and hardware state, then use disassembly and instrumentation to prove the execution path.
+Treat source-level debugging as a reconstruction problem: **source intent → compiler transformation → instructions → CPU state → peripheral/system state**. A strong debugger session proves facts across those layers instead of assuming that the source window is the ground truth. When source and machine views disagree, move downward to disassembly, ABI/frame information, memory maps, and fault registers until the disagreement is explained.
 
 ## Related
 [[00_Chapter_Index]]
 [[02_Breakpoints]]
 [[04_Call_stacks]]
+[[05_Registers]]
 [[07_Optimized_code_debugging]]
 [[../37_C_Compiler_Optimization/00_Chapter_Index]]
+[[../39_C_Diagnostics_Static_Analysis/00_Chapter_Index]]
