@@ -1,43 +1,62 @@
 # Embedded degraded modes
 
-> Canonical C topic note — chapter 42.
+> Canonical C topic note — Chapter 42. A degraded mode deliberately reduces functionality while preserving a defined safety and availability boundary after a failure.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Embedded degraded modes**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+A degraded mode is an explicitly designed operating state entered when full service cannot be provided. It differs from an uncontrolled partial failure because the allowed behavior, disabled features, resource ownership, and recovery criteria are known.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+Represent degraded states with an explicit state machine or status model. Error codes alone are insufficient if multiple callers can independently choose incompatible recovery actions.
 
 ### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+- What functionality remains guaranteed?
+- Which outputs are suppressed or substituted?
+- What resources are released or isolated?
+- What condition permits recovery?
+- Is recovery automatic, manual, or power-cycle dependent?
+
+C does not define a degraded-mode mechanism; the implementation must make state transitions and data validity explicit.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+Examples include reduced sensor rate after a peripheral fault, read-only operation after storage failure, disabling a nonessential feature after memory pressure, or entering a safe actuator state after communication loss. The degraded state must have bounded CPU, stack, power, and communication costs.
 
 ### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+Define entry/exit conditions, hysteresis, timeout policy, telemetry, and user-visible behavior. Avoid automatic recovery storms where repeated retries repeatedly consume scarce resources.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
-
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
+- A degraded mode accidentally enables unsafe outputs.
+- Recovery occurs before the underlying fault is actually cleared.
+- Multiple subsystems disagree about the current mode.
+- A latched fault is cleared without preserving evidence.
+- The degraded path has less test coverage than the normal path.
 
 ## Example pattern
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
+typedef enum {
+    MODE_NORMAL,
+    MODE_DEGRADED,
+    MODE_SAFE
+} system_mode_t;
+
+static system_mode_t mode;
+
+void on_sensor_failure(void)
 {
-    return x;
+    mode = MODE_DEGRADED;
 }
 ```
+Real designs should centralize transition policy and protect shared state according to their concurrency model.
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Inject each supported failure and verify the exact state transition, outputs, resource usage, telemetry, and recovery behavior. Test repeated failures, reboot during degraded mode, and recovery when the fault persists.
+
+Staff-level questions:
+- What safety property does the degraded mode preserve?
+- What evidence proves recovery is safe?
+- Can the mode be represented and tested as a finite state machine?
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+A degraded mode is a **contracted operating state**, not “whatever happens after an error.” Make the reduced capability explicit and ensure the degraded path is at least as rigorously tested as the nominal path.
 
 ## Related
 [[00_Chapter_Index]]
