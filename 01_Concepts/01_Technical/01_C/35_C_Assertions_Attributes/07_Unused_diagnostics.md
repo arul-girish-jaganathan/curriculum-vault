@@ -3,41 +3,52 @@
 > Canonical C topic note — chapter 35.
 
 ## Definition
-Define the concept precisely and state what the C language guarantees versus what is implementation-defined or platform-specific. For **Unused diagnostics**, focus on the exact syntax, semantic rule, and object/evaluation model involved.
+Unused diagnostics are compiler or static-analysis warnings for declarations, parameters, labels, expressions, or other entities that appear not to contribute to a program. C itself does not define a universal “unused” diagnostic; these are implementation/toolchain diagnostics intended to expose dead code, forgotten outputs, incomplete refactoring, or suspicious interfaces.
 
 ## Mechanism and language rules
-Explain the language rules, evaluation model, object/lifetime implications, and the compiler-facing meaning of the construct.
+Common diagnostics include unused variables, parameters, functions, labels, and values. Whether an entity is considered used depends on the compiler's semantic analysis and options. `(void)x;` is a conventional explicit-use idiom for an intentionally unused parameter, although project-specific attributes may be clearer.
+
+```c
+static void callback(void *context)
+{
+    (void)context;
+}
+```
+
+Do not silence a warning by changing code semantics. A compiler may still remove genuinely dead objects during optimization, while warnings often operate before or alongside optimization analysis.
 
 ### What to reason about
-- Identify the participating types, objects, values, storage duration, scope, linkage, and evaluation order.
-- Separate compile-time constraints and diagnostics from runtime behavior.
-- Check whether the rule interacts with conversions, aliasing, lifetime, alignment, or concurrency.
+- Determine whether “unused” indicates a real defect or intentional API shape.
+- Distinguish compile-time diagnostics from dead-code elimination.
+- Prefer local, documented suppression over global disabling.
+- Check generated/configuration-dependent code before assuming a warning is universally valid.
 
 ## Embedded implications
-Show the consequences for embedded firmware: RAM/ROM footprint, timing, interrupts, DMA/MMIO interaction, startup, ABI, or portability as applicable.
+Unused code and data can consume review attention and, depending on linkage and toolchain behavior, flash/RAM. More importantly, an unused variable may reveal a missing error check, a stale hardware status read, or a configuration path that was accidentally disconnected.
 
 ### Firmware review angle
-Consider how the construct behaves across debug/release builds, optimization levels, different compilers, different word sizes, and different MCU/CPU memory systems.
+Use strict warnings in CI, but define a documented exception mechanism for hardware callbacks, RTOS entry points, linker-retained symbols, startup hooks, and conditionally compiled interfaces. Check map files to verify that supposedly unused objects are actually absent when size matters.
 
 ## Edge cases and failure modes
-Cover common defects, edge cases, undefined behavior, portability traps, and misleading intuitions.
+`volatile` reads can have intentional side effects even when the resulting value is unused. Conversely, reading a non-volatile value and discarding it is generally not a substitute for an intended hardware access. Taking an address can count as use without proving that the pointee is meaningfully consumed.
 
-Typical questions include: what happens at a boundary value; what happens when an object is uninitialized or out of lifetime; what is merely implementation-defined; and what becomes invalid after optimization?
+Beware warning suppression macros that hide real defects in nearby code.
 
 ## Example pattern
 ```c
-/* Keep examples minimal: prove the rule before embedding it in a larger API. */
-static int example(int x)
+void isr_entry(void *arg)
 {
-    return x;
+    (void)arg; /* Required by the common ISR ABI, intentionally unused. */
+    clear_irq_flag();
+    service_irq();
 }
 ```
 
 ## Verification / debugging
-Provide at least one concrete code pattern or review approach, plus questions a Staff-level engineer should ask. Use compiler warnings, static analysis, sanitizers, unit tests, disassembly, linker maps, debugger inspection, or target instrumentation as appropriate.
+Build with warnings such as `-Wall -Wextra` and the project's stricter unused diagnostics. Review every suppression. Use link maps and `nm`/object inspection to distinguish source-level unused entities from symbols intentionally retained by the image.
 
 ## Staff-level takeaway
-A senior engineer should be able to explain not only **what** the construct does, but also **why**, what assumptions make it safe, what evidence validates those assumptions, and when a different design is preferable.
+Treat unused diagnostics as design feedback, not cosmetic noise. A mature codebase can explain every intentional unused entity and keeps the warning budget near zero.
 
 ## Related
 [[00_Chapter_Index]]
