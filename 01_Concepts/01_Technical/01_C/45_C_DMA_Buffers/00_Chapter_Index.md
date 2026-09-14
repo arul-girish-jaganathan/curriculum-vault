@@ -1,9 +1,11 @@
 # DMA Buffers and C Memory Interfaces
 
 ## Chapter purpose
-A deep-reference chapter in the C language knowledge base. Use it to understand the rule, reason about compiler and ABI effects, and apply it safely in embedded firmware.
+
+A deep-reference chapter in the C language knowledge base. Each topic is written to separate ISO C guarantees from compiler/ABI behavior and embedded hardware behavior.
 
 ## Topics
+
 - [[01_DMA_ownership|DMA ownership]]
 - [[02_Cache_maintenance|Cache maintenance]]
 - [[03_Alignment|Alignment]]
@@ -17,8 +19,13 @@ A deep-reference chapter in the C language knowledge base. Use it to understand 
 - [[11_IOMMU_facing_pointers|IOMMU-facing pointers]]
 - [[12_DMA_debugging|DMA debugging]]
 
+## Reference baseline
+
+`01_C/13_C_Pointers/05_void_pointers.md`
+
 ## Review prompts
+
 - What is guaranteed by ISO C?
 - What depends on the implementation, ABI, compiler, libc, or target?
 - What failure mode would appear on an embedded system?
-- What test or inspection would prove the behavior?
+- What evidence would prove the behavior?

@@ -1,9 +1,11 @@
 # Bit Manipulation and Masks
 
 ## Chapter purpose
-A deep-reference chapter in the C language knowledge base. Use it to understand the rule, reason about compiler and ABI effects, and apply it safely in embedded firmware.
+
+A deep-reference chapter in the C language knowledge base. Each topic is written to separate ISO C guarantees from compiler/ABI behavior and embedded hardware behavior.
 
 ## Topics
+
 - [[01_Masks|Masks]]
 - [[02_Shifts|Shifts]]
 - [[03_Bit_set_clear_toggle|Bit set/clear/toggle]]
@@ -17,8 +19,13 @@ A deep-reference chapter in the C language knowledge base. Use it to understand 
 - [[11_Bitfield_free_protocol_code|Bitfield-free protocol code]]
 - [[12_Constant_time_bit_operations|Constant-time bit operations]]
 
+## Reference baseline
+
+`01_C/13_C_Pointers/05_void_pointers.md`
+
 ## Review prompts
+
 - What is guaranteed by ISO C?
 - What depends on the implementation, ABI, compiler, libc, or target?
 - What failure mode would appear on an embedded system?
-- What test or inspection would prove the behavior?
+- What evidence would prove the behavior?

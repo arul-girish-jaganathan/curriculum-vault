@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "27_C_Alignment_Object_Representation/03_Alignas.md",
+                "file": "13_C_Pointers/05_void_pointers.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "03_Alignas"
+              "title": "05_void_pointers"
             }
           }
         ]
@@ -99,7 +99,7 @@
             "state": {
               "type": "backlink",
               "state": {
-                "file": "27_C_Alignment_Object_Representation/03_Alignas.md",
+                "file": "37_C_Compiler_Optimization/09_Volatile_barriers.md",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -118,7 +118,7 @@
             "state": {
               "type": "outgoing-link",
               "state": {
-                "file": "27_C_Alignment_Object_Representation/03_Alignas.md",
+                "file": "37_C_Compiler_Optimization/09_Volatile_barriers.md",
                 "linksCollapsed": false,
                 "unlinkedCollapsed": true
               },
@@ -161,7 +161,7 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "27_C_Alignment_Object_Representation/03_Alignas.md",
+                "file": "37_C_Compiler_Optimization/09_Volatile_barriers.md",
                 "followCursor": false,
                 "showSearch": false,
                 "searchQuery": ""
@@ -190,6 +190,24 @@
   },
   "active": "f850f334ef2557ab",
   "lastOpenFiles": [
+    "41_C_Debugging/01_Source_level_debugging.md",
+    "37_C_Compiler_Optimization/09_Volatile_barriers.md",
+    "37_C_Compiler_Optimization/01_As_if_rule.md",
+    "40_C_Sanitizers_Fuzzing/04_LeakSanitizer.md",
+    "40_C_Sanitizers_Fuzzing/02_UndefinedBehaviorSanitizer.md",
+    "34_C_Signals_Setjmp/06_setjmp.md",
+    "33_C_Variadic_Functions/04_va_end.md",
+    "33_C_Variadic_Functions/05_Default_argument_promotions.md",
+    "36_C_Linkage_ABI/01_External_symbols.md",
+    "36_C_Linkage_ABI/00_Chapter_Index.md",
+    "43_C_Bit_Manipulation/01_Masks.md",
+    "43_C_Bit_Manipulation/07_Leading_trailing_zeros.md",
+    "43_C_Bit_Manipulation/06_Population_count.md",
+    "41_C_Debugging/11_Debugger_scripting.md",
+    "41_C_Debugging/04_Call_stacks.md",
+    "41_C_Debugging/00_Chapter_Index.md",
+    "31_C_Standard_Library_Core/11_time_h.md",
+    "27_C_Alignment_Object_Representation/03_Alignas.md",
     "26_C_Lifetime_Aliasing/06_Strict_aliasing.md",
     "26_C_Lifetime_Aliasing/03_Dangling_pointers.md",
     "25_C_Dynamic_Memory/01_malloc.md",
@@ -198,24 +216,6 @@
     "24_C_Threads_C11/01_thrd_create.md",
     "24_C_Threads_C11/05_Mutexes.md",
     "13_C_Pointers/05_void_pointers.md",
-    "16_C_Struct_Union_Enum/04_Structure_assignment.md",
-    "16_C_Struct_Union_Enum/01_Structure_layout.md",
-    "23_C_Memory_Model/12_Memory_model_debugging.md",
-    "23_C_Memory_Model/02_Data_races.md",
-    "23_C_Memory_Model/03_Happens_before.md",
-    "22_C_Concurrency_Atomics/09_Atomic_flags.md",
-    "21_C_Headers_APIs_TU/03_Include_guards.md",
-    "21_C_Headers_APIs_TU/02_Private_headers.md",
-    "20_C_Macros/09_Token_pasting_macros.md",
-    "19_C_Preprocessor/01_File_inclusion.md",
-    "19_C_Preprocessor/09_Pragma.md",
-    "16_C_Struct_Union_Enum/03_Nested_structures.md",
-    "15_C_Strings_Characters/11_Buffer_sizing.md",
-    "15_C_Strings_Characters/08_Tokenization.md",
-    "15_C_Strings_Characters/04_Null_termination.md",
-    "15_C_Strings_Characters/03_String_literals.md",
-    "15_C_Strings_Characters/00_Chapter_Index.md",
-    "15_C_Strings_Characters/06_String_copying.md",
     "15_C_Strings_Characters/15_C_Strings_Characters_obsidian.zip",
     "14_C_Arrays_VLA/14_C_Arrays_VLA_obsidian.zip",
     "12_C_Functions/12_C_Functions_obsidian.zip"

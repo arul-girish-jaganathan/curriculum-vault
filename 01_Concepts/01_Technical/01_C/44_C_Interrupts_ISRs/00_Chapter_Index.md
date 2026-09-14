@@ -1,9 +1,11 @@
 # Interrupt-facing C and ISRs
 
 ## Chapter purpose
-A deep-reference chapter in the C language knowledge base. Use it to understand the rule, reason about compiler and ABI effects, and apply it safely in embedded firmware.
+
+A deep-reference chapter in the C language knowledge base. Each topic is written to separate ISO C guarantees from compiler/ABI behavior and embedded hardware behavior.
 
 ## Topics
+
 - [[01_ISR_constraints|ISR constraints]]
 - [[02_Volatile_MMIO|Volatile MMIO]]
 - [[03_Atomic_flags|Atomic flags]]
@@ -17,8 +19,13 @@ A deep-reference chapter in the C language knowledge base. Use it to understand 
 - [[11_Latency_budgeting|Latency budgeting]]
 - [[12_ISR_review_checklist|ISR review checklist]]
 
+## Reference baseline
+
+`01_C/13_C_Pointers/05_void_pointers.md`
+
 ## Review prompts
+
 - What is guaranteed by ISO C?
 - What depends on the implementation, ABI, compiler, libc, or target?
 - What failure mode would appear on an embedded system?
-- What test or inspection would prove the behavior?
+- What evidence would prove the behavior?
